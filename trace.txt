@@ -1,0 +1,15 @@
+Compiling 2 files with Solc 0.8.26
+Solc 0.8.26 finished in 48.78s
+Compiler run successful!
+
+Ran 7 tests for test/LeanSwap.t.sol:LeanSwapTest
+[PASS] test_cancelOrder() (gas: 402862)
+[PASS] test_cancelOrder_NotOwner() (gas: 492557)
+[PASS] test_deadlineExceeded_executesSwap() (gas: 480785)
+[PASS] test_deadlineExceeded_revertsIfEarly() (gas: 488891)
+[PASS] test_placeOrder() (gas: 491700)
+[PASS] test_settleOrder_matchEqual() (gas: 758045)
+[PASS] test_skipCoW_if_flag_false() (gas: 154265)
+Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 12.61ms (8.49ms CPU time)
+
+Ran 1 test suite in 8.35s (12.61ms CPU time): 7 tests passed, 0 failed, 0 skipped (7 total tests)
