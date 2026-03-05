@@ -17,7 +17,7 @@ import {SwapParams, ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {LeanSwapLibrary} from "../src/Library.sol";
 
-contract LeanSwapTest is Test, Deployers {
+contract LeanSwapTestExtended is Test, Deployers {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
 
@@ -236,9 +236,9 @@ contract LeanSwapTest is Test, Deployers {
         // Try to cancel the first one? Wait, they share an orderId if not salted!
         // We will see if it reverts or handles it gracefully.
         // We can just query `pendingOrders` length
-        (,,,,,, uint256 amtIn1,) = hook.pendingOrders(poolId, true, 0);
+        (,,,,, uint256 amtIn1,,) = hook.pendingOrders(poolId, true, 0);
         assertEq(amtIn1, amountIn);
-        (,,,,,, uint256 amtIn2,) = hook.pendingOrders(poolId, true, 1);
+        (,,,,, uint256 amtIn2,,) = hook.pendingOrders(poolId, true, 1);
         assertEq(amtIn2, amountIn);
 
         // Getting the orderId

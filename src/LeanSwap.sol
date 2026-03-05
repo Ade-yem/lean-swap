@@ -117,12 +117,12 @@ contract LeanSwap is BaseHook {
             PoolId poolId = key.toId();
             bool zeroForOne = params.zeroForOne;
             // The desired input amount if negative (exactIn), or the desired output amount if positive (exactOut)
-            int256 inputAmount = params.amountSpecified;
+            // int256 inputAmount = params.amountSpecified;
             // We want to simulate the swapping to determine the amount of token1 that the user is going to get or the amount of token0 the user is going to pay
             (uint256 tokenIn, uint256 tokenOut, BeforeSwapDelta beforeSwapDelta_) = simulateSwap(poolId, params);
 
-            uint128 amountToTake = inputAmount < 0 ? uint128(uint256(-inputAmount)) : uint128(tokenIn);
-            takeAndSettle(key, zeroForOne, amountToTake);
+            // uint128 amountToTake = inputAmount < 0 ? uint128(uint256(-inputAmount)) : uint128(tokenIn);
+            takeAndSettle(key, zeroForOne, tokenIn.toUint128());
 
             placeOrder(poolId, owner, zeroForOne, tokenIn, tokenOut, deadline);
             emit SwapOrderCreated(key, zeroForOne, deadline);
@@ -401,9 +401,9 @@ contract LeanSwap is BaseHook {
                 feePips: 0
             });
             // Update our hook delta to reduce the upcoming swap amount to show that we have
-            // already spent some of the ETH and received some of the underlying ERC20.
+            // already spent some of the token0 and received some of the underlying ERC20.
             beforeSwapDelta_ = toBeforeSwapDelta(
-                -tokenIn.toInt256().toInt128(), // specified is negative for exactIn
+                (-params.amountSpecified).toInt128(), // specified: Hook satisfies exact output
                 0 // unspecified is 0 because user receives output upon fulfillment
             );
         } else {
