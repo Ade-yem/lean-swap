@@ -33,8 +33,8 @@ contract LeanSwapTest is Test, Deployers {
 
         uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
         address hookAddress = address(flags);
-        deployCodeTo("LeanSwap.sol", abi.encode(manager), hookAddress);
-        hook = LeanSwap(hookAddress);
+        deployCodeTo("LeanSwap.sol", abi.encode(manager, address(0x0000000000000000000000000000000000fffFfF)), hookAddress);
+        hook = LeanSwap(payable(hookAddress));
 
         (key, poolId) = initPool(currency0, currency1, hook, 3000, TickMath.getSqrtPriceAtTick(0));
 
@@ -197,7 +197,7 @@ contract LeanSwapTest is Test, Deployers {
         uint256 orderId = _getOrderId(true);
 
         vm.expectRevert(LeanSwap.DeadlineNotMatured.selector);
-        hook.deadlineExceeded(key, orderId);
+        hook._deadlineExceeded(key, orderId);
         vm.stopPrank();
     }
 
@@ -224,7 +224,7 @@ contract LeanSwapTest is Test, Deployers {
         uint256 bal1Before = currency1.balanceOf(alice);
 
         // Anyone can call deadlineExceeded since it just processes the swap for the original owner
-        hook.deadlineExceeded(key, orderId);
+        hook._deadlineExceeded(key, orderId);
 
         uint256 bal1After = currency1.balanceOf(alice);
 
@@ -265,7 +265,7 @@ contract LeanSwapTest is Test, Deployers {
         uint256 aliceBal1Before = currency1.balanceOf(alice);
         uint256 bobBal0Before = currency0.balanceOf(bob);
 
-        hook.settleOrder(key);
+        hook._settleOrder(key);
 
         assertEq(currency1.balanceOf(alice) - aliceBal1Before, amountIn); // 1:1 match
         assertEq(currency0.balanceOf(bob) - bobBal0Before, amountIn); // 1:1 match

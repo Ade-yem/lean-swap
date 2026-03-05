@@ -6,6 +6,8 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {SwapMath} from "@uniswap/v4-core/src/libraries/SwapMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
+import {AbstractCallback} from "reactive-lib/abstract-base/AbstractCallback.sol";
+
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
@@ -21,9 +23,9 @@ import {SwapParams} from "v4-core/types/PoolOperation.sol";
 
 import {BaseHook} from "v4-hooks-public/src/base/BaseHook.sol";
 
-import {LeanSwapLibrary} from "./Library.sol";
+import {LeanSwapLibrary, ReactiveLibrary} from "./Library.sol";
 
-contract LeanSwap is BaseHook {
+contract LeanSwap is BaseHook, AbstractCallback {
     using LeanSwapLibrary for bytes;
     using StateLibrary for IPoolManager;
     using SafeCast for uint256;
@@ -63,8 +65,9 @@ contract LeanSwap is BaseHook {
 
     // Events
     event SwapOrderCancelled(address owner, PoolKey poolKey, uint256 amount);
-    event SwapOrderDeadlineExceeded(address owner, PoolKey poolKey, uint256 amount);
-    event SwapOrderCreated(PoolKey pookKey, bool zeroForOne, uint256 deadline);
+    event SwapOrderDeadlineExceededSettled(address owner, PoolKey poolKey, uint256 amount, uint256 orderId);
+    event SwapOrderCreated(PoolKey poolKey, bool zeroForOne, uint256 deadline, uint256 orderId, uint256 amountIn);
+    event SwapOrderSettled(PoolKey poolKey, bool zeroForOne, uint256 amountOut);
 
     // Mappings
     // Basically, we can have multiple orders for thesame deadline, for that deadline, we can have multiple zeroForOne orders or non zeroForOne orders
@@ -77,7 +80,10 @@ contract LeanSwap is BaseHook {
     mapping(uint256 orderId => Order order) public orders;
     mapping(uint256 orderId => uint256 index) public orderIndex;
 
-    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+    constructor(IPoolManager _poolManager, address _reactiveService)
+        BaseHook(_poolManager)
+        AbstractCallback(_reactiveService)
+    {}
 
     /// Hook permission selector
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -124,8 +130,8 @@ contract LeanSwap is BaseHook {
             // uint128 amountToTake = inputAmount < 0 ? uint128(uint256(-inputAmount)) : uint128(tokenIn);
             takeAndSettle(key, zeroForOne, tokenIn.toUint128());
 
-            placeOrder(poolId, owner, zeroForOne, tokenIn, tokenOut, deadline);
-            emit SwapOrderCreated(key, zeroForOne, deadline);
+            uint256 orderId = placeOrder(poolId, owner, zeroForOne, tokenIn, tokenOut, deadline);
+            emit SwapOrderCreated(key, zeroForOne, deadline, orderId, tokenIn);
             return (this.beforeSwap.selector, beforeSwapDelta_, 0);
         }
     }
@@ -159,7 +165,7 @@ contract LeanSwap is BaseHook {
     /// It swaps the token in one swap order for the second one
     /// @notice Handles simple pool match and routes the net imbalance to the Uniswap V4 Pool.
     /// @param key Pool key
-    function settleOrder(PoolKey calldata key) public {
+    function _settleOrder(PoolKey memory key) public {
         PoolId poolId = key.toId();
 
         uint256 amountOfToken0In = batchPendingOrdersIn[poolId][true];
@@ -286,7 +292,7 @@ contract LeanSwap is BaseHook {
         emit SwapOrderCancelled(order.owner, key, order.amountIn);
     }
 
-    function deadlineExceeded(PoolKey calldata key, uint256 orderId) public {
+    function _deadlineExceeded(PoolKey memory key, uint256 orderId) public {
         if (orderIndex[orderId] == 0) revert SwapOrderNotFound();
         Order memory order = orders[orderId];
         if (block.timestamp < order.deadline) revert DeadlineNotMatured();
@@ -338,7 +344,7 @@ contract LeanSwap is BaseHook {
         uint256 amountToSend =
             order.zeroForOne ? int256(delta.amount1()).toUint256() : int256(delta.amount0()).toUint256();
         token.transfer(order.owner, amountToSend);
-        emit SwapOrderDeadlineExceeded(order.owner, key, order.amountIn);
+        emit SwapOrderDeadlineExceededSettled(order.owner, key, order.amountIn, orderId);
     }
 
     /// Callback for the pool manager
@@ -370,6 +376,21 @@ contract LeanSwap is BaseHook {
         return abi.encode(delta);
     }
 
+    /// Callback for the reactive network
+    function callback(bytes calldata data) external {
+        // Add security here: e.g., only callable by the RVM
+
+        (ReactiveLibrary.CallbackType action) = abi.decode(data, (ReactiveLibrary.CallbackType));
+
+        if (action == ReactiveLibrary.CallbackType.SETTLE_ORDER) {
+            (, PoolKey memory key) = abi.decode(data, (ReactiveLibrary.CallbackType, PoolKey));
+            _settleOrder(key);
+        } else if (action == ReactiveLibrary.CallbackType.DEADLINE_EXCEEDED) {
+            (, uint256 orderId, PoolKey memory key) = abi.decode(data, (ReactiveLibrary.CallbackType, uint256, PoolKey));
+            _deadlineExceeded(key, orderId);
+        }
+    }
+
     // =================== Helper Functions ==================
 
     /// Calculate what would happen if the swap went through the Uniswap AMM right now, without actually executing it.
@@ -393,7 +414,7 @@ contract LeanSwap is BaseHook {
             uint256 amountSpecified = params.amountSpecified.toUint256();
 
             // We want to determine the amount of ETH token required to get the amount of token1 specified at the current pool state
-            (, tokenIn, tokenOut,) = SwapMath.computeSwapStep({
+            (, tokenIn,,) = SwapMath.computeSwapStep({
                 sqrtPriceCurrentX96: sqrtPriceX96,
                 sqrtPriceTargetX96: params.sqrtPriceLimitX96,
                 liquidity: poolManager.getLiquidity(poolId),
@@ -403,8 +424,8 @@ contract LeanSwap is BaseHook {
             // Update our hook delta to reduce the upcoming swap amount to show that we have
             // already spent some of the token0 and received some of the underlying ERC20.
             beforeSwapDelta_ = toBeforeSwapDelta(
-                (-params.amountSpecified).toInt128(), // specified: Hook satisfies exact output
-                0 // unspecified is 0 because user receives output upon fulfillment
+                (params.amountSpecified).toInt128(), // specified: Hook satisfies exact output
+                -int128(uint128(tokenOut))
             );
         } else {
             // token0 for token1 with exact input for output
@@ -441,7 +462,7 @@ contract LeanSwap is BaseHook {
     }
 
     /// @dev Helper to iterate through orders and assign their proportional output
-    function _distributeSettlement(PoolKey calldata key, bool zeroForOne, uint256 totalInput, uint256 totalOutput)
+    function _distributeSettlement(PoolKey memory key, bool zeroForOne, uint256 totalInput, uint256 totalOutput)
         internal
     {
         PoolId poolId = key.toId();
@@ -466,6 +487,7 @@ contract LeanSwap is BaseHook {
 
         // Clear the array since they are processed
         delete pendingOrders[poolId][zeroForOne];
+        emit SwapOrderSettled(key, zeroForOne, totalOutput);
     }
 
     /// Settle currency with pool manager

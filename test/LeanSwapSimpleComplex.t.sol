@@ -36,8 +36,8 @@ contract LeanSwapTestExtended is Test, Deployers {
 
         uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
         address hookAddress = address(flags);
-        deployCodeTo("LeanSwap.sol", abi.encode(manager), hookAddress);
-        hook = LeanSwap(hookAddress);
+        deployCodeTo("LeanSwap.sol", abi.encode(manager, address(0x0000000000000000000000000000000000fffFfF)), hookAddress);
+        hook = LeanSwap(payable(hookAddress));
 
         (key, poolId) = initPool(currency0, currency1, hook, 3000, TickMath.getSqrtPriceAtTick(0));
 
@@ -161,7 +161,7 @@ contract LeanSwapTestExtended is Test, Deployers {
         assertEq(hook.batchPendingOrdersIn(poolId, true), 2 ether);
         assertEq(hook.batchPendingOrdersIn(poolId, false), 2 ether);
 
-        hook.settleOrder(key);
+        hook._settleOrder(key);
 
         assertEq(hook.batchPendingOrdersIn(poolId, true), 0);
         assertEq(hook.batchPendingOrdersIn(poolId, false), 0);
@@ -195,7 +195,7 @@ contract LeanSwapTestExtended is Test, Deployers {
             LeanSwapLibrary.encodeHookData(deadline, true, bob)
         );
 
-        hook.settleOrder(key);
+        hook._settleOrder(key);
 
         // Remaining should be settled via AMM
         assertEq(hook.batchPendingOrdersIn(poolId, true), 0);
@@ -263,7 +263,7 @@ contract LeanSwapTestExtended is Test, Deployers {
             LeanSwapLibrary.encodeHookData(deadline, true, bob)
         );
 
-        hook.settleOrder(key);
+        hook._settleOrder(key);
 
         assertEq(hook.batchPendingOrdersIn(poolId, true), 0);
     }
