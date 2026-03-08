@@ -414,7 +414,7 @@ contract LeanSwap is BaseHook, AbstractCallback {
             uint256 amountSpecified = params.amountSpecified.toUint256();
 
             // We want to determine the amount of ETH token required to get the amount of token1 specified at the current pool state
-            (, tokenIn,,) = SwapMath.computeSwapStep({
+            (, tokenIn, tokenOut,) = SwapMath.computeSwapStep({
                 sqrtPriceCurrentX96: sqrtPriceX96,
                 sqrtPriceTargetX96: params.sqrtPriceLimitX96,
                 liquidity: poolManager.getLiquidity(poolId),
@@ -424,8 +424,8 @@ contract LeanSwap is BaseHook, AbstractCallback {
             // Update our hook delta to reduce the upcoming swap amount to show that we have
             // already spent some of the token0 and received some of the underlying ERC20.
             beforeSwapDelta_ = toBeforeSwapDelta(
-                (params.amountSpecified).toInt128(), // specified: Hook satisfies exact output
-                -int128(uint128(tokenOut))
+                int128(uint128(tokenIn)), 
+                -(params.amountSpecified).toInt128()
             );
         } else {
             // token0 for token1 with exact input for output
