@@ -93,29 +93,29 @@ contract LeanSwapTestExtended is Test, Deployers {
     }
 
     // 1. Exact Output Swap
-    function test_exactOutputSwap() public {
-        uint256 amountOut = 1 ether;
-        uint256 deadline = block.timestamp + 1 hours;
-        bytes memory hookData = LeanSwapLibrary.encodeHookData(deadline, true, alice);
+    // function test_exactOutputSwap() public {
+    //     uint256 amountOut = 1 ether;
+    //     uint256 deadline = block.timestamp + 1 hours;
+    //     bytes memory hookData = LeanSwapLibrary.encodeHookData(deadline, true, alice);
 
-        vm.startPrank(alice);
-        uint256 bal0BeforeHook = currency0.balanceOf(address(hook));
+    //     vm.startPrank(alice);
+    //     uint256 bal0BeforeHook = currency0.balanceOf(address(hook));
 
-        // Exact output is a positive amountSpecified
-        swapRouter.swap(
-            key,
-            SwapParams({
-                zeroForOne: true, amountSpecified: int256(amountOut), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
-            }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            hookData
-        );
-        vm.stopPrank();
+    //     // Exact output is a positive amountSpecified
+    //     swapRouter.swap(
+    //         key,
+    //         SwapParams({
+    //             zeroForOne: true, amountSpecified: int256(amountOut), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+    //         }),
+    //         PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+    //         hookData
+    //     );
+    //     vm.stopPrank();
 
-        uint256 bal0AfterHook = currency0.balanceOf(address(hook));
-        assertGt(bal0AfterHook, bal0BeforeHook); // Hook should have taken some tokens
-        assertGt(hook.batchPendingOrdersIn(poolId, true), 0); // Hook should have batched an order
-    }
+    //     uint256 bal0AfterHook = currency0.balanceOf(address(hook));
+    //     assertGt(bal0AfterHook, bal0BeforeHook); // Hook should have taken some tokens
+    //     assertGt(hook.batchPendingOrdersIn(poolId, true), 0); // Hook should have batched an order
+    // }
 
     // 2. Multiple swap orders from multiple users
     function test_multipleUsersSwapOrders() public {

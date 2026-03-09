@@ -35,6 +35,7 @@ library ReactiveLibrary {
         PoolKey poolKey;
         bool zeroForOne;
         uint256 amountOut;
+        uint256 orderId;
     }
 
     struct DeadlineSettledData {
@@ -46,7 +47,8 @@ library ReactiveLibrary {
 
     enum CallbackType {
         SETTLE_ORDER,
-        DEADLINE_EXCEEDED
+        DEADLINE_EXCEEDED,
+        SETTLE_COMPLEX_ORDER
     }
 
     // Update these to return the full payload including the "callback(bytes)" selector
@@ -57,6 +59,11 @@ library ReactiveLibrary {
 
     function encodeDeadlineCallbackData(uint256 orderId, PoolKey memory key) internal pure returns (bytes memory) {
         bytes memory data = abi.encode(CallbackType.DEADLINE_EXCEEDED, orderId, key);
+        return abi.encodeWithSignature("callback(bytes)", data);
+    }
+
+    function encodeComplexCallbackData(uint256[] memory orderIds, PoolKey[] memory keys) internal pure returns (bytes memory) {
+        bytes memory data = abi.encode(CallbackType.SETTLE_COMPLEX_ORDER, orderIds, keys);
         return abi.encodeWithSignature("callback(bytes)", data);
     }
 
