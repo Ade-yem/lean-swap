@@ -109,7 +109,7 @@ contract LeanSwapTest is Test, Deployers {
         assertEq(hook.batchPendingOrdersIn(poolId, true), amountIn);
         assertEq(bal0AfterHook - bal0BeforeHook, amountIn);
 
-        (address owner,, bool zeroForOne, bool fulfilled, bool canceled, uint256 amtIn,, uint256 dl) =
+        (address owner,, bool zeroForOne, bool fulfilled, bool canceled, uint256 amtIn,, uint256 dl,) =
             hook.pendingOrders(poolId, true, 0);
         assertEq(owner, alice);
         assertEq(zeroForOne, true);
@@ -121,8 +121,8 @@ contract LeanSwapTest is Test, Deployers {
 
     // Helper to extract orderId
     function _getOrderId(bool zeroForOne) internal view returns (uint256) {
-        (,,,,, uint256 amtIn, uint256 amtOut, uint256 dl) = hook.pendingOrders(poolId, zeroForOne, 0);
-        return uint256(keccak256(abi.encode(poolId, zeroForOne, dl, amtIn, amtOut, alice)));
+        (,,,,, uint256 amtIn, uint256 amtOut, uint256 dl, uint256 nonce) = hook.pendingOrders(poolId, zeroForOne, 0);
+        return uint256(keccak256(abi.encode(poolId, zeroForOne, dl, amtIn, amtOut, alice, nonce)));
     }
 
     function test_cancelOrder() public {

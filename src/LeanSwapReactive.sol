@@ -9,21 +9,6 @@ import {PoolId} from "v4-core/types/PoolId.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {ReactiveLibrary} from "./Library.sol";
 
-// struct LogRecord {
-//    uint256 chain_id;
-//    address _contract;
-//    uint256 topic_0;
-//    uint256 topic_1;
-//    uint256 topic_2;
-//    uint256 topic_3;
-//    bytes data;
-//    uint256 block_number;
-//    uint256 op_code;
-//    uint256 block_hash;
-//    uint256 tx_hash;
-//    uint256 log_index;
-// }
-
 contract LeanSwapReactive is IReactive, AbstractReactive {
     uint256 public originChainId;
     uint256 public destinationChainId;

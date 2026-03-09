@@ -48,6 +48,7 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
         uint256 amountIn;
         uint256 amountOut;
         uint256 deadline;
+        uint256 nonce;
     }
 
     struct CallbackData {
@@ -73,6 +74,8 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
 
     // Reactive smart contract address
     address rscAddress;
+    // Nonce for orders
+    uint256 nonce = 1;
 
     // Mappings
     // Basically, we can have multiple orders for thesame deadline, for that deadline, we can have multiple zeroForOne orders or non zeroForOne orders
@@ -136,10 +139,6 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
 
             // uint128 amountToTake = inputAmount < 0 ? uint128(uint256(-inputAmount)) : uint128(tokenIn);
             takeAndSettle(key, zeroForOne, tokenIn.toUint128());
-            if (params.amountSpecified > 0) {
-                Currency outCurrency = zeroForOne ? key.currency1 : key.currency0;
-                _settle(outCurrency, tokenOut.toUint128());
-            }
 
             uint256 orderId = placeOrder(poolId, owner, zeroForOne, tokenIn, tokenOut, deadline);
             emit SwapOrderCreated(key, zeroForOne, deadline, orderId, tokenIn);
@@ -163,14 +162,16 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
             canceled: false,
             amountIn: amountIn,
             amountOut: amountOut,
-            deadline: deadline
+            deadline: deadline,
+            nonce: nonce
         });
         pendingOrders[_poolId][zeroForOne].push(order);
         batchPendingOrdersIn[_poolId][zeroForOne] += amountIn;
         batchPendingOrdersOut[_poolId][zeroForOne] += amountOut;
-        orderId = getOrderId(_poolId, zeroForOne, deadline, amountIn, amountOut, order.owner);
+        orderId = getOrderId(_poolId, zeroForOne, deadline, amountIn, amountOut, order.owner, nonce);
         orderIndex[orderId] = pendingOrders[_poolId][zeroForOne].length;
         orders[orderId] = order;
+        nonce++;
     }
 
     /// It swaps the token in one swap order for the second one
@@ -340,7 +341,7 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
 
                 // Transfer the AMM-fulfilled amount to the user
                 uint256 ammFulfilled =
-                    currentOrder.zeroForOne ? uint256(int256(-delta.amount1())) : uint256(int256(-delta.amount0()));
+                    currentOrder.zeroForOne ? uint256(int256(delta.amount1())) : uint256(int256(-delta.amount0()));
 
                 tokenOut.transfer(currentOrder.owner, ammFulfilled);
             }
@@ -371,7 +372,8 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
                 lastOrder.deadline,
                 lastOrder.amountIn,
                 lastOrder.amountOut,
-                lastOrder.owner
+                lastOrder.owner,
+                lastOrder.nonce
             );
             memOrders[index] = lastOrder;
             orderIndex[lastOrderId] = index + 1;
@@ -405,7 +407,8 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
                 lastOrder.deadline,
                 lastOrder.amountIn,
                 lastOrder.amountOut,
-                lastOrder.owner
+                lastOrder.owner,
+                lastOrder.nonce
             );
             memOrders[index] = lastOrder;
             orderIndex[lastOrderId] = index + 1;
@@ -584,7 +587,13 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
         for (uint256 i = 0; i < totalOrders; i++) {
             Order memory order = pendingOrders[poolId][zeroForOne][i];
             uint256 orderId = getOrderId(
-                order.poolId, order.zeroForOne, order.deadline, order.amountIn, order.amountOut, order.owner
+                order.poolId,
+                order.zeroForOne,
+                order.deadline,
+                order.amountIn,
+                order.amountOut,
+                order.owner,
+                order.nonce
             );
 
             // Calculate proportional share: (order.amountIn / totalInput) * totalOutput
@@ -616,7 +625,8 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
                 lastOrder.deadline,
                 lastOrder.amountIn,
                 lastOrder.amountOut,
-                lastOrder.owner
+                lastOrder.owner,
+                lastOrder.nonce
             );
             memOrders[index] = lastOrder;
             orderIndex[lastOrderId] = index + 1;
@@ -649,6 +659,7 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
     /// @param deadline deadline of CoW swap
     /// @param amountIn Amount of token in
     /// @param amountOut Amount of token out
+    /// @param orderNonce Nonce of the order
     /// @return orderId order id of the swap
     function getOrderId(
         PoolId _poolId,
@@ -656,8 +667,16 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
         uint256 deadline,
         uint256 amountIn,
         uint256 amountOut,
-        address owner
+        address owner,
+        uint256 orderNonce
     ) internal pure returns (uint256 orderId) {
-        return uint256(keccak256(abi.encode(_poolId, zeroForOne, deadline, amountIn, amountOut, owner)));
+        return uint256(keccak256(abi.encode(_poolId, zeroForOne, deadline, amountIn, amountOut, owner, orderNonce)));
     }
 }
+
+
+// Notes
+// The settle order has a vulnerability that requires failsafes in every part to return the user's money
+// We should have a minimum slippage in the swap hook data from the beforeSwap, so we can add the minAmountOut by the user to the order data
+// When creating the order, if the minAmountOut is greater than the amountOut, it should revert
+// otherwise, we should create the order. When fulfilling orders, we have to ensure that in the swap now, the amountOut to the user does not exceed the minAmountOut

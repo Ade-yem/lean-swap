@@ -1,0 +1,1 @@
+cast send 0x9b9BB25f1A81078C544C829c5EB7822d747Cf434 --rpc-url $ETHEREUM_SEPOLIA_RPC --private-key $ETHEREUM_SEPOLIA_PRIVATE_KEY "request(address)" $CONTRACT_ADDR --value 0.1ether
