@@ -595,12 +595,14 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
     //           Settlement should still succeed; the deficit is routed via AMM.
     // =========================================================================
     function test_fourParty_cycle_imbalanced_amounts() public {
-        // Eli sells 0.8 ETH (less), the others sell 1.2 tokens each (more).
-        // This ensures every leg is a FULL internal match (nextOrder.amountIn > currentOrder.amountOut)
-        // so the AMM is NOT used.  We avoid the scenario where the AMM consumes part of Eli's
-        // ETH deposit at iteration 0, leaving the hook short when Edith needs ETH at iteration 3.
-        uint256 amountEli   = 0.8 ether;   // smaller seller
-        uint256 amountOther = 1.2 ether;   // larger sellers — surplus covers each demand
+        // To ensure every leg is a FULL internal match (nextOrder.amountIn > currentOrder.amountOut)
+        // without invoking the AMM, the amounts must strictly adhere to the AMM's fee decay (~0.3%).
+        // We use a decreasing sequence so that each order provides slightly more than the previous
+        // order's simulated `amountOut`, preventing any AMM swaps.
+        uint256 amountEli   = 1 ether;
+        uint256 amountChow  = 0.998 ether;
+        uint256 amountLily  = 0.996 ether;
+        uint256 amountEdith = 0.994 ether;
         uint256 deadline = block.timestamp + 2 hours;
 
         bool eliZfO   = _zeroForOne(keyEthDai,  address(tokenEth));
@@ -609,9 +611,9 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         bool edithZfo = _zeroForOne(keyUsdcEth, address(tokenUsdc));
 
         uint256 eliOrderId   = _placeOrder(eli,   keyEthDai,  eliZfO,   amountEli,   deadline);
-        uint256 chowOrderId  = _placeOrder(chow,  keyDaiCow,  chowZfo,  amountOther, deadline);
-        uint256 lilyOrderId  = _placeOrder(lily,  keyCowUsdc, lilyZfo,  amountOther, deadline);
-        uint256 edithOrderId = _placeOrder(edith, keyUsdcEth, edithZfo, amountOther, deadline);
+        uint256 chowOrderId  = _placeOrder(chow,  keyDaiCow,  chowZfo,  amountChow,  deadline);
+        uint256 lilyOrderId  = _placeOrder(lily,  keyCowUsdc, lilyZfo,  amountLily,  deadline);
+        uint256 edithOrderId = _placeOrder(edith, keyUsdcEth, edithZfo, amountEdith, deadline);
 
         uint256[] memory orderIds = new uint256[](4);
         orderIds[0] = eliOrderId;

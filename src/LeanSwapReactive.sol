@@ -277,6 +277,10 @@ contract LeanSwapReactive is IReactive, AbstractReactive {
 
                 // Deactivate so we don't double-trigger
                 isActiveOrder[currentOrderId] = false;
+            } else {
+                // If it's active but hasn't expired, we MUST NOT advance head past it.
+                // Stop checking. Waiting for this order to expire (Head of line blocking).
+                break;
             }
 
             unchecked {
