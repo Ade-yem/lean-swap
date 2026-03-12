@@ -167,6 +167,7 @@ contract LeanSwapReactive is IReactive, AbstractReactive {
             }
             _removeOrderFromGraph(orderId);
             _deactivateOrder(orderId);
+            checkDeadlines();
         }
     }
 

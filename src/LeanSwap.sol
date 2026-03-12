@@ -10,8 +10,6 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {SwapMath} from "@uniswap/v4-core/src/libraries/SwapMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
-import {console} from "forge-std/console.sol";
-
 import {AbstractCallback} from "reactive-lib/abstract-base/AbstractCallback.sol";
 
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -153,7 +151,6 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable, ReentrancyGuard {
 
             PoolId poolId = key.toId();
             bool zeroForOne = params.zeroForOne;
-            console.log("Minimum amount specified", minAmountOut);
             (uint256 tokenIn, uint256 tokenOut, BeforeSwapDelta beforeSwapDelta_) = simulateSwap(poolId, params);
 
             takeAndSettle(key, zeroForOne, tokenIn.toUint128());
@@ -345,22 +342,16 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable, ReentrancyGuard {
             outCurrencies[i] = tokenOut;
 
             if (amountProvidedInternally >= amountDemanded) {
-                // Full internal match
+                // Full internal match — next order's amountIn covers the full demand.
+                // NOTE: do NOT touch nextOrder's batch here; _removeOrderFromPending
+                // handles batchPendingOrdersIn cleanup for each order in its own iteration.
                 outAmounts[i] = amountDemanded;
-
-                // Issue 4 fix: deduct only what was actually consumed from nextOrder's batch
-                batchPendingOrdersIn[nextOrder.poolId][nextOrder.zeroForOne] -= amountDemanded;
             } else {
                 // Partial internal match — swap the deficit via the V4 AMM
                 uint256 deficitToSwap = amountDemanded - amountProvidedInternally;
 
-                // Issue 5 fix: compute total tokenIn available for this order minus
-                // what was already consumed internally on the input side
+                // Total tokenIn available to cover the AMM swap for this order
                 uint256 maxTokenInForAmm = currentOrder.amountIn;
-
-                if (amountProvidedInternally > 0) {
-                    batchPendingOrdersIn[nextOrder.poolId][nextOrder.zeroForOne] -= amountProvidedInternally;
-                }
 
                 BalanceDelta delta = abi.decode(
                     poolManager.unlock(
