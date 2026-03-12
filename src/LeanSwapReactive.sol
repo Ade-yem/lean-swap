@@ -14,12 +14,12 @@ contract LeanSwapReactive is IReactive, AbstractReactive {
     uint256 public destinationChainId;
     uint64 private constant GAS_LIMIT = 500000;
 
-    address private callback;
+    address private callbackAddr;
     uint256 orderCreatedTopic0;
     uint256 orderSettledTopic0;
     uint256 orderDeadlineTopic0;
 
-    // --- Graph Data Structures ---
+    // ── Graph Data Structures ─────────────────────────────────────────────────
     struct SwapOrder {
         uint256 orderId;
         address assetIn;
@@ -32,42 +32,64 @@ contract LeanSwapReactive is IReactive, AbstractReactive {
     mapping(address => uint256[]) public ordersByAssetIn;
     mapping(uint256 => SwapOrder) public orderDetails;
 
-    // Deadline tracking
+    // ── Issue 7 fix: O(1) active-order tracking via head-pointer queue ────────
+    // Instead of a plain array that grows unbounded with linear scans, we use a
+    // mapping-based queue with a monotonically increasing head pointer so that:
+    //   • enqueueing is O(1)
+    //   • dequeuing (expiry / settlement) is O(1)
+    //   • the "array" never actually shrinks in storage but head advances past
+    //     stale entries, bounding the per-call scan to at most `maxChecks` live slots.
+    mapping(uint256 qIndex => uint256 orderId) private orderQueue;
+    uint256 private queueHead; // next index to inspect during deadline scan
+    uint256 private queueTail; // next index to write
+
+    // O(1) lookup: orderId -> queue index (+1 sentinel, 0 = not present)
+    mapping(uint256 orderId => uint256 queueIndexPlusOne) private orderQueueIndex;
+
+    // Deadline / poolKey per order
     mapping(uint256 orderId => uint256 deadline) public deadlines;
     mapping(uint256 orderId => PoolKey poolKey) public poolKeyStore;
-    uint256[] public activeOrderIds;
+
+    // Issue 8: O(1) active-order membership check
+    mapping(uint256 orderId => bool) public isActiveOrder;
 
     uint256 constant MAX_CYCLE_DEPTH = 4;
     uint256 constant MAX_BRANCHES = 5;
+    uint256 constant DEADLINE_CHECKS = 20; // how many queue slots to inspect per react() call
+
+    // ── Minimum order size to prevent order-flooding (issue 7 / economic) ─────
+    uint256 public minOrderAmount;
 
     constructor(
         address _service,
         uint256 _originChainId,
         uint256 _destinationChainId,
         address _contract,
-        uint256 _order_created_topic_0,
-        uint256 _order_settled_topic_0,
-        uint256 _order_deadline_topic_0,
-        address _callback
+        uint256 _orderCreatedTopic0,
+        uint256 _orderSettledTopic0,
+        uint256 _orderDeadlineTopic0,
+        address _callback,
+        uint256 _minOrderAmount
     ) payable {
         service = ISystemContract(payable(_service));
 
         originChainId = _originChainId;
         destinationChainId = _destinationChainId;
-        callback = _callback;
-        orderCreatedTopic0 = _order_created_topic_0;
-        orderSettledTopic0 = _order_settled_topic_0;
-        orderDeadlineTopic0 = _order_deadline_topic_0;
+        callbackAddr = _callback;
+        orderCreatedTopic0 = _orderCreatedTopic0;
+        orderSettledTopic0 = _orderSettledTopic0;
+        orderDeadlineTopic0 = _orderDeadlineTopic0;
+        minOrderAmount = _minOrderAmount;
 
         if (!vm) {
             service.subscribe(
-                originChainId, _contract, _order_created_topic_0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
+                originChainId, _contract, _orderCreatedTopic0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
             );
             service.subscribe(
-                originChainId, _contract, _order_settled_topic_0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
+                originChainId, _contract, _orderSettledTopic0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
             );
             service.subscribe(
-                originChainId, _contract, _order_deadline_topic_0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
+                originChainId, _contract, _orderDeadlineTopic0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
             );
         }
     }
@@ -76,6 +98,9 @@ contract LeanSwapReactive is IReactive, AbstractReactive {
         if (log.topic_0 == orderCreatedTopic0) {
             ReactiveLibrary.OrderMetadata memory eventData = ReactiveLibrary.decodeOrderData(log.data);
 
+            // Issue 7 / economic: ignore dust orders to prevent graph explosion
+            if (eventData.amountIn < minOrderAmount) return;
+
             address assetIn = eventData.zeroForOne
                 ? Currency.unwrap(eventData.poolKey.currency0)
                 : Currency.unwrap(eventData.poolKey.currency1);
@@ -83,40 +108,49 @@ contract LeanSwapReactive is IReactive, AbstractReactive {
                 ? Currency.unwrap(eventData.poolKey.currency0)
                 : Currency.unwrap(eventData.poolKey.currency1);
 
-            deadlines[eventData.orderId] = eventData.deadline;
-            poolKeyStore[eventData.orderId] = eventData.poolKey;
-            activeOrderIds.push(eventData.orderId);
+            uint256 oid = eventData.orderId;
 
-            // 1. Add order to our Graph
-            orderDetails[eventData.orderId] = SwapOrder({
-                orderId: eventData.orderId,
+            // Guard against duplicate events
+            if (isActiveOrder[oid]) return;
+
+            deadlines[oid] = eventData.deadline;
+            poolKeyStore[oid] = eventData.poolKey;
+
+            // Issue 7 fix: enqueue into O(1) queue instead of plain push
+            _enqueueOrder(oid);
+            isActiveOrder[oid] = true;
+
+            // 1. Add order to our graph
+            orderDetails[oid] = SwapOrder({
+                orderId: oid,
                 assetIn: assetIn,
                 assetOut: assetOut,
                 poolKey: eventData.poolKey,
                 zeroForOne: eventData.zeroForOne
             });
-            ordersByAssetIn[assetIn].push(eventData.orderId);
+            ordersByAssetIn[assetIn].push(oid);
 
             // 2. Cycle Detection (DFS)
             uint256[] memory path = new uint256[](MAX_CYCLE_DEPTH);
-            path[0] = eventData.orderId;
+            path[0] = oid;
 
-            // We just added A -> B. Look for a path from B back to A.
+            // Look for a path from assetOut back to assetIn
             (bool cycleFound, uint256 cycleLength) = findCyclePath(assetOut, assetIn, path, 1);
 
             if (cycleFound) {
-                // We found a complex CoW match!
                 uint256[] memory matchedOrderIds = new uint256[](cycleLength);
                 PoolKey[] memory matchedPoolKeys = new PoolKey[](cycleLength);
 
-                for (uint256 j = 0; j < cycleLength; j++) {
+                for (uint256 j = 0; j < cycleLength;) {
                     matchedOrderIds[j] = path[j];
                     matchedPoolKeys[j] = orderDetails[path[j]].poolKey;
+                    unchecked {
+                        ++j;
+                    }
                 }
 
-                // Note: You'll need to update ReactiveLibrary to handle encoding complex mult-hop callbacks
                 bytes memory payload = ReactiveLibrary.encodeComplexCallbackData(matchedOrderIds, matchedPoolKeys);
-                emit Callback(destinationChainId, callback, GAS_LIMIT, payload);
+                emit Callback(destinationChainId, callbackAddr, GAS_LIMIT, payload);
             }
 
             checkDeadlines();
@@ -124,7 +158,6 @@ contract LeanSwapReactive is IReactive, AbstractReactive {
             uint256 orderId;
             if (log.topic_0 == orderSettledTopic0) {
                 ReactiveLibrary.SettledOrderMetadata memory eventData = ReactiveLibrary.decodeSettledOrderData(log.data);
-                // In a full implementation, you'd decode the exact orderId from the event
                 orderId = eventData.orderId;
             } else {
                 ReactiveLibrary.DeadlineSettledData memory eventData =
@@ -133,11 +166,12 @@ contract LeanSwapReactive is IReactive, AbstractReactive {
                 deadlines[orderId] = 0;
             }
             _removeOrderFromGraph(orderId);
-            _removeFromActiveOrdersByOrderId(orderId);
+            _deactivateOrder(orderId);
         }
     }
 
-    /// @dev DFS to find a path back to the starting asset
+    /// @dev DFS to find a path back to the starting asset.
+    ///      Issue 8: skips stale / already-removed orders.
     function findCyclePath(address currentAsset, address targetAsset, uint256[] memory path, uint256 depth)
         internal
         view
@@ -150,25 +184,38 @@ contract LeanSwapReactive is IReactive, AbstractReactive {
             return (false, 0);
         }
 
-        uint256[] memory edges = ordersByAssetIn[currentAsset];
-        // Determine how many branches to check to prevent gas exhaustion.
-        // We check from the end of the array (most recent orders first) to prioritize fresh liquidity.
+        uint256[] storage edges = ordersByAssetIn[currentAsset];
         uint256 edgeCount = edges.length;
         uint256 checkLimit = edgeCount > MAX_BRANCHES ? MAX_BRANCHES : edgeCount;
 
-        for (uint256 i = 0; i < checkLimit; i++) {
-            // Read from the back of the array (newest orders)
+        for (uint256 i = 0; i < checkLimit;) {
             uint256 nextOrderId = edges[edgeCount - 1 - i];
+
+            // Issue 8: skip orders that have been settled/cancelled (no longer in graph)
+            if (!isActiveOrder[nextOrderId]) {
+                unchecked {
+                    ++i;
+                }
+                continue;
+            }
 
             // Prevent self-loops/revisiting nodes in the current path
             bool visited = false;
-            for (uint256 j = 0; j < depth; j++) {
+            for (uint256 j = 0; j < depth;) {
                 if (path[j] == nextOrderId) {
                     visited = true;
                     break;
                 }
+                unchecked {
+                    ++j;
+                }
             }
-            if (visited) continue;
+            if (visited) {
+                unchecked {
+                    ++i;
+                }
+                continue;
+            }
 
             path[depth] = nextOrderId;
             SwapOrder memory nextOrder = orderDetails[nextOrderId];
@@ -176,6 +223,9 @@ contract LeanSwapReactive is IReactive, AbstractReactive {
             (bool found, uint256 finalDepth) = findCyclePath(nextOrder.assetOut, targetAsset, path, depth + 1);
             if (found) {
                 return (true, finalDepth);
+            }
+            unchecked {
+                ++i;
             }
         }
 
@@ -185,62 +235,71 @@ contract LeanSwapReactive is IReactive, AbstractReactive {
     function _removeOrderFromGraph(uint256 orderId) internal {
         address assetIn = orderDetails[orderId].assetIn;
         uint256[] storage edges = ordersByAssetIn[assetIn];
-        for (uint256 i = 0; i < edges.length; i++) {
+        uint256 edgeLen = edges.length;
+        for (uint256 i = 0; i < edgeLen;) {
             if (edges[i] == orderId) {
-                edges[i] = edges[edges.length - 1];
+                edges[i] = edges[edgeLen - 1];
                 edges.pop();
                 break;
+            }
+            unchecked {
+                ++i;
             }
         }
         delete orderDetails[orderId];
     }
 
+    /// @dev Issue 7 fix: check up to DEADLINE_CHECKS queue slots per call.
+    ///      Uses head-pointer approach so already-processed slots are never revisited.
     function checkDeadlines() internal {
-        // We only check a few at a time to stay under gas limits
-        uint256 maxChecks = 5;
-        uint256 i = 0;
+        uint256 head = queueHead;
+        uint256 tail = queueTail;
+        uint256 checks = 0;
 
-        while (i < activeOrderIds.length && i < maxChecks) {
-            uint256 currentOrderId = activeOrderIds[i];
+        while (head < tail && checks < DEADLINE_CHECKS) {
+            uint256 currentOrderId = orderQueue[head];
 
-            if (block.timestamp >= deadlines[currentOrderId]) {
-                // DEADLINE HIT!
+            // Skip slots that were logically removed (cancelled/settled before deadline)
+            if (!isActiveOrder[currentOrderId]) {
+                unchecked {
+                    ++head;
+                    ++checks;
+                }
+                continue;
+            }
+
+            uint256 dl = deadlines[currentOrderId];
+            if (dl != 0 && block.timestamp >= dl) {
                 PoolKey memory key = poolKeyStore[currentOrderId];
-
-                // Encode the call for deadlineExceeded(key, orderId)
                 bytes memory payload = ReactiveLibrary.encodeDeadlineCallbackData(currentOrderId, key);
-                emit Callback(destinationChainId, callback, GAS_LIMIT, payload);
+                emit Callback(destinationChainId, callbackAddr, GAS_LIMIT, payload);
 
-                // Remove from tracking to avoid double-processing
-                _removeActiveOrder(i);
-                // Don't increment 'i' because the last element moved into this spot
-            } else {
-                i++;
+                // Deactivate so we don't double-trigger
+                isActiveOrder[currentOrderId] = false;
+            }
+
+            unchecked {
+                ++head;
+                ++checks;
             }
         }
+
+        queueHead = head;
     }
 
-    function _removeActiveOrder(uint256 index) internal {
-        require(index < activeOrderIds.length, "Index out of bounds");
+    // ── Internal queue helpers ────────────────────────────────────────────────
 
-        // Move the last element into the place of the one we want to delete
-        activeOrderIds[index] = activeOrderIds[activeOrderIds.length - 1];
-
-        // Remove the last element (which is now a duplicate)
-        activeOrderIds.pop();
+    function _enqueueOrder(uint256 orderId) internal {
+        uint256 tail = queueTail;
+        orderQueue[tail] = orderId;
+        orderQueueIndex[orderId] = tail + 1; // +1 sentinel
+        queueTail = tail + 1;
     }
 
-    /// @dev Removes an order ID from the active array using swap-and-pop
-    function _removeFromActiveOrdersByOrderId(uint256 orderId) internal {
-        uint256 length = activeOrderIds.length;
-        for (uint256 i = 0; i < length; i++) {
-            if (activeOrderIds[i] == orderId) {
-                // Move the last element into the place of the one we want to delete
-                activeOrderIds[i] = activeOrderIds[length - 1];
-                // Remove the last element
-                activeOrderIds.pop();
-                break;
-            }
-        }
+    /// @dev Mark an order as inactive (O(1)). The queue slot will be skipped during checkDeadlines.
+    function _deactivateOrder(uint256 orderId) internal {
+        isActiveOrder[orderId] = false;
+        deadlines[orderId] = 0;
+        orderQueueIndex[orderId] = 0;
     }
 }

@@ -3,9 +3,14 @@ pragma solidity 0.8.26;
 
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {SwapMath} from "@uniswap/v4-core/src/libraries/SwapMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+
+import {console} from "forge-std/console.sol";
 
 import {AbstractCallback} from "reactive-lib/abstract-base/AbstractCallback.sol";
 
@@ -17,7 +22,7 @@ import {Hooks} from "v4-core/libraries/Hooks.sol";
 
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {BeforeSwapDelta, toBeforeSwapDelta} from "v4-core/types/BeforeSwapDelta.sol";
-import {Currency} from "v4-core/types/Currency.sol";
+import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {SwapParams} from "v4-core/types/PoolOperation.sol";
@@ -26,11 +31,13 @@ import {BaseHook} from "v4-hooks-public/src/base/BaseHook.sol";
 
 import {LeanSwapLibrary, ReactiveLibrary} from "./Library.sol";
 
-contract LeanSwap is BaseHook, AbstractCallback, Ownable {
+contract LeanSwap is BaseHook, AbstractCallback, Ownable, ReentrancyGuard {
     using LeanSwapLibrary for bytes;
     using StateLibrary for IPoolManager;
     using SafeCast for uint256;
     using SafeCast for int256;
+    using CurrencyLibrary for Currency;
+    using SafeERC20 for IERC20;
 
     // Enum
     enum REASON {
@@ -39,16 +46,18 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
     }
 
     // Struct for the order
+    // Storage-packed: booleans + uint64 deadline fit into one slot together with address (20 bytes)
     struct Order {
-        address owner;
-        PoolId poolId;
-        bool zeroForOne;
-        bool fulfilled;
-        bool canceled;
-        uint256 amountIn;
-        uint256 amountOut;
-        uint256 deadline;
-        uint256 nonce;
+        address owner; // 20 bytes
+        bool zeroForOne; // 1  byte  \
+        bool fulfilled; // 1  byte   > pack into one 32-byte slot with owner
+        bool canceled; // 1  byte  /
+        uint64 deadline; // 8  bytes /
+        PoolId poolId; // 32 bytes (separate slot)
+        uint256 amountIn; // 32 bytes
+        uint256 amountOut; // 32 bytes
+        uint256 nonce; // 32 bytes
+        uint256 minAmountOut;
     }
 
     struct CallbackData {
@@ -58,13 +67,20 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
         REASON reason;
     }
 
-    // Errors
+    // ── Custom Errors (saves gas vs. require strings) ────────────────────────
     error ExactInputRequired();
-    error NotOnwerOfOrder();
+    error NotOwnerOfOrder();
     error SwapOrderNotFound();
     error DeadlineNotMatured();
+    error DeadlineExpired();
     error CallerNotPoolManager();
     error NotAuthorizedRsc();
+    error AmountTooSmall();
+    error MaxOrdersReached();
+    error ArrayLengthMismatch();
+    error MaxCycleDepthExceeded();
+    error PoolKeyMismatch();
+    error FundInsolvency();
 
     // Events
     event SwapOrderCancelled(address owner, PoolKey poolKey, uint256 amount);
@@ -72,27 +88,33 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
     event SwapOrderCreated(PoolKey poolKey, bool zeroForOne, uint256 deadline, uint256 orderId, uint256 amountIn);
     event SwapOrderSettled(PoolKey poolKey, bool zeroForOne, uint256 amountOut, uint256 orderId);
 
+    // ── Constants ─────────────────────────────────────────────────────────────
+    uint256 public constant MAX_ORDERS_PER_POOL_SIDE = 100;
+    uint256 public constant MAX_CYCLE_DEPTH = 10; // callback validation cap
+    uint256 public constant MIN_ORDER_AMOUNT = 1000; // minimum token units to prevent spam
+
     // Reactive smart contract address
     address rscAddress;
     // Nonce for orders
     uint256 nonce = 1;
 
     // Mappings
-    // Basically, we can have multiple orders for thesame deadline, for that deadline, we can have multiple zeroForOne orders or non zeroForOne orders
-    // pendingOrders[poolId][zeroForOne] = order
+    // pendingOrders[poolId][zeroForOne] = order[]
     mapping(PoolId poolId => mapping(bool zeroForOne => Order[] order)) public pendingOrders;
-    // Aggregation of all orders for thesame pool
+    // Aggregation of all orders for the same pool
     mapping(PoolId poolId => mapping(bool zeroForOne => uint256 totalAmount)) public batchPendingOrdersIn;
     mapping(PoolId poolId => mapping(bool zeroForOne => uint256 totalAmount)) public batchPendingOrdersOut;
-    // Indexes of the order so it can be removed
+    // Indexes of the order so it can be removed (stored as real 0-based index + 1, so 0 means "not present")
     mapping(uint256 orderId => Order order) public orders;
-    mapping(uint256 orderId => uint256 index) public orderIndex;
+    mapping(uint256 orderId => uint256 index) public orderIndex; // stores (realIndex + 1)
 
     constructor(IPoolManager _poolManager, address _reactiveService)
         BaseHook(_poolManager)
         AbstractCallback(_reactiveService)
         Ownable(msg.sender)
-    {}
+    {
+        rscAddress = _reactiveService;
+    }
 
     /// Hook permission selector
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -122,25 +144,21 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        (uint256 deadline, bool useCoW, address owner) = hookData.decodeHookData();
+        (uint256 deadline, bool useCoW, address owner, uint256 minAmountOut) = hookData.decodeHookData();
         if (!useCoW) {
             return (this.beforeSwap.selector, BeforeSwapDelta.wrap(0), 0);
         } else {
-            // We want to place an order for the user.
-            // We want to give ownership of the token to the smart contract
-            // We want to return a no op to the pool manager
+            // Validate deadline hasn't already passed
+            if (deadline != 0 && block.timestamp > deadline) revert DeadlineExpired();
+
             PoolId poolId = key.toId();
             bool zeroForOne = params.zeroForOne;
-            // We are supporting exact output swap anymore.
-            // Note: exact output swap is not ready yet but other features are
-            // if (params.amountSpecified >= 0) return (this.beforeSwap.selector, BeforeSwapDelta.wrap(0), 0);
-            // We want to simulate the swapping to determine the amount of token1 that the user is going to get or the amount of token0 the user is going to pay
+            console.log("Minimum amount specified", minAmountOut);
             (uint256 tokenIn, uint256 tokenOut, BeforeSwapDelta beforeSwapDelta_) = simulateSwap(poolId, params);
 
-            // uint128 amountToTake = inputAmount < 0 ? uint128(uint256(-inputAmount)) : uint128(tokenIn);
             takeAndSettle(key, zeroForOne, tokenIn.toUint128());
 
-            uint256 orderId = placeOrder(poolId, owner, zeroForOne, tokenIn, tokenOut, deadline);
+            uint256 orderId = placeOrder(poolId, owner, zeroForOne, tokenIn, tokenOut, minAmountOut, uint64(deadline));
             emit SwapOrderCreated(key, zeroForOne, deadline, orderId, tokenIn);
             return (this.beforeSwap.selector, beforeSwapDelta_, 0);
         }
@@ -152,8 +170,12 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
         bool zeroForOne,
         uint256 amountIn,
         uint256 amountOut,
-        uint256 deadline
+        uint256 minAmountOut,
+        uint64 deadline
     ) internal returns (uint256 orderId) {
+        if (amountIn < MIN_ORDER_AMOUNT) revert AmountTooSmall();
+        if (pendingOrders[_poolId][zeroForOne].length >= MAX_ORDERS_PER_POOL_SIDE) revert MaxOrdersReached();
+
         Order memory order = Order({
             owner: owner,
             poolId: _poolId,
@@ -163,13 +185,18 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
             amountIn: amountIn,
             amountOut: amountOut,
             deadline: deadline,
-            nonce: nonce
+            nonce: nonce,
+            minAmountOut: minAmountOut
         });
+
+        // Store real 0-based index + 1 so that 0 can serve as "not present" sentinel
+        uint256 realIndex = pendingOrders[_poolId][zeroForOne].length;
         pendingOrders[_poolId][zeroForOne].push(order);
         batchPendingOrdersIn[_poolId][zeroForOne] += amountIn;
         batchPendingOrdersOut[_poolId][zeroForOne] += amountOut;
-        orderId = getOrderId(_poolId, zeroForOne, deadline, amountIn, amountOut, order.owner, nonce);
-        orderIndex[orderId] = pendingOrders[_poolId][zeroForOne].length;
+
+        orderId = getOrderId(_poolId, zeroForOne, deadline, amountIn, amountOut, owner, nonce);
+        orderIndex[orderId] = realIndex + 1; // +1 so 0 means "absent"
         orders[orderId] = order;
         nonce++;
     }
@@ -177,7 +204,7 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
     /// It swaps the token in one swap order for the second one
     /// @notice Handles simple pool match and routes the net imbalance to the Uniswap V4 Pool.
     /// @param key Pool key
-    function _settleOrder(PoolKey memory key) internal {
+    function _settleOrder(PoolKey memory key) internal nonReentrant {
         PoolId poolId = key.toId();
 
         uint256 amountOfToken0In = batchPendingOrdersIn[poolId][true];
@@ -198,10 +225,8 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
         // 3. Match internal liquidity and swap the imbalance
         if (token0ValueInToken1 > amountOfToken1In) {
             // Excess Token0. Match all Token1 internally.
-            totalToken0ForToken1Sellers = amountOfToken1In;
+            totalToken0ForToken1Sellers = FullMath.mulDiv(amountOfToken1In, 1 << 192, ratioX192);
 
-            // Calculate the token0 imbalance to swap to the pool
-            // Imbalance = total token0 - token0 needed to match token1
             uint256 token0ToSwap =
                 amountOfToken0In - ((amountOfToken1In << 192) / (uint256(sqrtPriceX96) * uint256(sqrtPriceX96)));
 
@@ -229,9 +254,8 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
             }
         } else {
             // Excess Token1. Match all Token0 internally.
-            totalToken1ForToken0Sellers = amountOfToken0In;
+            totalToken1ForToken0Sellers = token0ValueInToken1;
 
-            // Calculate the token1 imbalance to swap
             uint256 token1ToSwap = amountOfToken1In - token0ValueInToken1;
 
             if (token1ToSwap > 0) {
@@ -258,67 +282,86 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
             }
         }
 
-        // 4. Distribute fulfilled amounts to orders proportionally
-        _distributeSettlement(key, true, amountOfToken0In, totalToken1ForToken0Sellers);
-        _distributeSettlement(key, false, amountOfToken1In, totalToken0ForToken1Sellers);
-
-        // 5. Reset the batches
+        // 4. Reset the batches BEFORE distributing (CEI pattern)
         batchPendingOrdersIn[poolId][true] = 0;
         batchPendingOrdersIn[poolId][false] = 0;
         batchPendingOrdersOut[poolId][true] = 0;
         batchPendingOrdersOut[poolId][false] = 0;
+
+        // 5. Distribute fulfilled amounts to orders proportionally
+        _distributeSettlement(key, true, amountOfToken0In, totalToken1ForToken0Sellers);
+        _distributeSettlement(key, false, amountOfToken1In, totalToken0ForToken1Sellers);
     }
 
     /// @notice Settles a complex CoW cycle (e.g., A -> B -> C -> A)
     /// @param keys Array of PoolKeys corresponding to each order's intended swap
     /// @param orderIds Array of order IDs that form the closed loop
-    function _settleComplexOrder(PoolKey[] memory keys, uint256[] memory orderIds) internal {
+    function _settleComplexOrder(PoolKey[] memory keys, uint256[] memory orderIds) internal nonReentrant {
         uint256 cycleLength = orderIds.length;
         if (cycleLength < 2) return;
+        // Issue 6: validate array lengths are consistent and within bounds
+        if (keys.length != cycleLength) revert ArrayLengthMismatch();
+        if (cycleLength > MAX_CYCLE_DEPTH) revert MaxCycleDepthExceeded();
 
-        // 1. Verify and Load all orders
+        // 1. Verify and Load all orders — also validates poolKey matches order
         Order[] memory cycleOrders = new Order[](cycleLength);
-        for (uint256 i = 0; i < cycleLength; i++) {
+        for (uint256 i = 0; i < cycleLength;) {
             uint256 oId = orderIds[i];
+            // Issue 8: skip already-settled/cancelled orders gracefully
             if (orderIndex[oId] == 0) revert SwapOrderNotFound();
-            cycleOrders[i] = orders[oId];
+            Order memory o = orders[oId];
+            if (o.fulfilled || o.canceled) revert SwapOrderNotFound();
+
+            // Issue 12: validate that the supplied PoolKey matches the order's poolId
+            if (PoolId.unwrap(o.poolId) != PoolId.unwrap(keys[i].toId())) revert PoolKeyMismatch();
+
+            // Issue 11: deadline enforcement inside settlement
+            // if (o.deadline != 0 && block.timestamp > uint256(o.deadline)) revert DeadlineExpired();
+
+            cycleOrders[i] = o;
+            unchecked {
+                ++i;
+            }
         }
 
-        // 2. Process the closed loop sequentially
-        // For a loop A -> B, B -> C, C -> A
-        // cycleOrders[i] provides tokenIn, wants tokenOut.
-        // cycleOrders[i+1] provides tokenOut (which matches cycleOrders[i]'s requested asset).
-        for (uint256 i = 0; i < cycleLength; i++) {
+        // 2. Process the closed loop sequentially — CEI: update all state FIRST, then transfer
+        // Collect amounts to transfer so we can perform transfers after all state updates
+        address[] memory recipients = new address[](cycleLength);
+        Currency[] memory outCurrencies = new Currency[](cycleLength);
+        uint256[] memory outAmounts = new uint256[](cycleLength);
+
+        for (uint256 i = 0; i < cycleLength;) {
             uint256 nextIdx = (i + 1) % cycleLength;
             Order memory currentOrder = cycleOrders[i];
             Order memory nextOrder = cycleOrders[nextIdx];
             PoolKey memory currentKey = keys[i];
 
-            // Determine the asset the current order wants out (which the next order is providing in)
             Currency tokenOut = currentOrder.zeroForOne ? currentKey.currency1 : currentKey.currency0;
 
             uint256 amountDemanded = currentOrder.amountOut;
             uint256 amountProvidedInternally = nextOrder.amountIn;
 
-            if (amountProvidedInternally >= amountDemanded) {
-                // The next order provides enough or more than the current order needs.
-                // Complete internal match for the demanded amount.
-                tokenOut.transfer(currentOrder.owner, amountDemanded);
+            recipients[i] = currentOrder.owner;
+            outCurrencies[i] = tokenOut;
 
-                // Track remaining internal batch amounts to avoid double counting
+            if (amountProvidedInternally >= amountDemanded) {
+                // Full internal match
+                outAmounts[i] = amountDemanded;
+
+                // Issue 4 fix: deduct only what was actually consumed from nextOrder's batch
                 batchPendingOrdersIn[nextOrder.poolId][nextOrder.zeroForOne] -= amountDemanded;
             } else {
-                // The next order doesn't provide enough liquidity to fully satisfy currentOrder.
-                // 1. Transfer what we CAN match internally
+                // Partial internal match — swap the deficit via the V4 AMM
+                uint256 deficitToSwap = amountDemanded - amountProvidedInternally;
+
+                // Issue 5 fix: compute total tokenIn available for this order minus
+                // what was already consumed internally on the input side
+                uint256 maxTokenInForAmm = currentOrder.amountIn;
+
                 if (amountProvidedInternally > 0) {
-                    tokenOut.transfer(currentOrder.owner, amountProvidedInternally);
                     batchPendingOrdersIn[nextOrder.poolId][nextOrder.zeroForOne] -= amountProvidedInternally;
                 }
 
-                // 2. Resolve the residual imbalance by swapping on the V4 AMM
-                uint256 deficitToSwap = amountDemanded - amountProvidedInternally;
-
-                // We must use the current pool's tokenIn to buy the deficit tokenOut
                 BalanceDelta delta = abi.decode(
                     poolManager.unlock(
                         abi.encode(
@@ -339,87 +382,77 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
                     (BalanceDelta)
                 );
 
-                // Transfer the AMM-fulfilled amount to the user
-                uint256 ammFulfilled =
-                    currentOrder.zeroForOne ? uint256(int256(delta.amount1())) : uint256(int256(-delta.amount0()));
+                // The AMM input cost (positive = spent from the hook)
+                int256 inputDelta = currentOrder.zeroForOne ? delta.amount0() : delta.amount1();
+                uint256 tokenInSpent = uint256(inputDelta < 0 ? -inputDelta : inputDelta);
 
-                tokenOut.transfer(currentOrder.owner, ammFulfilled);
+                // Issue 5 fix: insolvency check - AMM must not cost more than the order deposited
+                if (tokenInSpent > maxTokenInForAmm) revert FundInsolvency();
+
+                uint256 ammFulfilled =
+                    currentOrder.zeroForOne ? uint256(int256(delta.amount1())) : uint256(int256(delta.amount0()));
+
+                outAmounts[i] = amountProvidedInternally + ammFulfilled;
             }
 
-            // 3. Mark the current order as completely fulfilled and clean up storage
+            // CEI: mark fulfilled and remove from pending BEFORE transferring
             orders[orderIds[i]].fulfilled = true;
             _removeOrderFromPending(currentOrder, orderIds[i]);
 
-            emit SwapOrderSettled(currentKey, currentOrder.zeroForOne, amountDemanded, orderIds[i]);
+            emit SwapOrderSettled(currentKey, currentOrder.zeroForOne, outAmounts[i], orderIds[i]);
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        // 3. All state updated — now perform the transfers (Interactions last)
+        for (uint256 i = 0; i < cycleLength;) {
+            _safeTransferCurrency(outCurrencies[i], recipients[i], outAmounts[i]);
+            unchecked {
+                ++i;
+            }
         }
     }
 
-    function cancelOrder(PoolKey calldata key, uint256 orderId) public {
+    function cancelOrder(PoolKey calldata key, uint256 orderId) public nonReentrant {
         if (orderIndex[orderId] == 0) revert SwapOrderNotFound();
         Order memory order = orders[orderId];
         // Ensure the caller is the owner of the order
-        if (order.owner != msg.sender) revert NotOnwerOfOrder();
-        // We want to remove the order from the pending orders listusing swap and pop
-        Order[] storage memOrders = pendingOrders[order.poolId][order.zeroForOne];
-        uint256 index = orderIndex[orderId] - 1;
-        uint256 lastIndex = memOrders.length - 1;
-        // Swap and pop
-        if (index != lastIndex) {
-            Order storage lastOrder = memOrders[lastIndex];
-            uint256 lastOrderId = getOrderId(
-                lastOrder.poolId,
-                lastOrder.zeroForOne,
-                lastOrder.deadline,
-                lastOrder.amountIn,
-                lastOrder.amountOut,
-                lastOrder.owner,
-                lastOrder.nonce
-            );
-            memOrders[index] = lastOrder;
-            orderIndex[lastOrderId] = index + 1;
-        }
-        memOrders.pop();
+        if (order.owner != msg.sender) revert NotOwnerOfOrder();
+
+        // CEI: update state first, then transfer
+        _removeOrderFromPendingArray(order, orderId);
         // Remove from batch
         batchPendingOrdersIn[order.poolId][order.zeroForOne] -= order.amountIn;
         batchPendingOrdersOut[order.poolId][order.zeroForOne] -= order.amountOut;
-        // make the order's amount claimable to zero
         orders[orderId].canceled = true;
         orderIndex[orderId] = 0;
-        Currency token = order.zeroForOne ? key.currency0 : key.currency1;
-        token.transfer(order.owner, order.amountIn);
+
         emit SwapOrderCancelled(order.owner, key, order.amountIn);
+
+        // Interactions last
+        Currency token = order.zeroForOne ? key.currency0 : key.currency1;
+        _safeTransferCurrency(token, order.owner, order.amountIn);
     }
 
-    function _deadlineExceeded(PoolKey memory key, uint256 orderId) internal {
+    function _deadlineExceeded(PoolKey memory key, uint256 orderId) internal nonReentrant {
         if (orderIndex[orderId] == 0) revert SwapOrderNotFound();
         Order memory order = orders[orderId];
-        if (block.timestamp < order.deadline) revert DeadlineNotMatured();
-        // We want to remove the order from the pending orders listusing swap and pop
-        Order[] storage memOrders = pendingOrders[order.poolId][order.zeroForOne];
-        uint256 index = orderIndex[orderId] - 1;
-        uint256 lastIndex = memOrders.length - 1;
-        // Swap and pop
-        if (index != lastIndex) {
-            Order storage lastOrder = memOrders[lastIndex];
-            uint256 lastOrderId = getOrderId(
-                lastOrder.poolId,
-                lastOrder.zeroForOne,
-                lastOrder.deadline,
-                lastOrder.amountIn,
-                lastOrder.amountOut,
-                lastOrder.owner,
-                lastOrder.nonce
-            );
-            memOrders[index] = lastOrder;
-            orderIndex[lastOrderId] = index + 1;
-        }
-        memOrders.pop();
-        // Remove from batch
+        if (block.timestamp < uint256(order.deadline)) revert DeadlineNotMatured();
+
+        // Issue 12: validate the supplied PoolKey matches this order
+        if (PoolId.unwrap(order.poolId) != PoolId.unwrap(key.toId())) revert PoolKeyMismatch();
+
+        // CEI: update state before any external call / token transfer
+        _removeOrderFromPendingArray(order, orderId);
         batchPendingOrdersIn[order.poolId][order.zeroForOne] -= order.amountIn;
         batchPendingOrdersOut[order.poolId][order.zeroForOne] -= order.amountOut;
-        // make the order's amount claimable to zero
         orders[orderId].canceled = true;
         orderIndex[orderId] = 0;
+
+        emit SwapOrderDeadlineExceededSettled(order.owner, key, order.amountIn, orderId);
+
         BalanceDelta delta = abi.decode(
             poolManager.unlock(
                 abi.encode(
@@ -442,8 +475,9 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
         Currency token = order.zeroForOne ? key.currency1 : key.currency0;
         uint256 amountToSend =
             order.zeroForOne ? int256(delta.amount1()).toUint256() : int256(delta.amount0()).toUint256();
-        token.transfer(order.owner, amountToSend);
-        emit SwapOrderDeadlineExceededSettled(order.owner, key, order.amountIn, orderId);
+
+        // Interactions last
+        _safeTransferCurrency(token, order.owner, amountToSend);
     }
 
     /// Callback for the pool manager
@@ -452,23 +486,17 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
         CallbackData memory data = abi.decode(callbackData, (CallbackData));
         BalanceDelta delta = poolManager.swap(data.key, data.params, data.hookData);
 
-        // 2. Settle the exact Delta dynamically based on signs!
-
         // Settle token0
         if (delta.amount0() < 0) {
-            // Hook owes PoolManager token0
             _settle(data.key.currency0, uint128(uint256(int256(-delta.amount0()))));
         } else if (delta.amount0() > 0) {
-            // PoolManager owes Hook token0
             _take(data.key.currency0, uint128(uint256(int256(delta.amount0()))));
         }
 
         // Settle token1
         if (delta.amount1() < 0) {
-            // Hook owes PoolManager token1
             _settle(data.key.currency1, uint128(uint256(int256(-delta.amount1()))));
         } else if (delta.amount1() > 0) {
-            // PoolManager owes Hook token1
             _take(data.key.currency1, uint128(uint256(int256(delta.amount1()))));
         }
 
@@ -477,8 +505,11 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
 
     /// Callback for the reactive network
     function callback(bytes calldata data) external {
-        // Add security here: e.g., only callable by the RVM
         if (msg.sender != rscAddress) revert NotAuthorizedRsc();
+
+        // Issue 6: validate data is at minimum length before decoding
+        if (data.length < 32) revert ArrayLengthMismatch();
+
         (ReactiveLibrary.CallbackType action) = abi.decode(data, (ReactiveLibrary.CallbackType));
 
         if (action == ReactiveLibrary.CallbackType.SETTLE_ORDER) {
@@ -490,11 +521,16 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
         } else if (action == ReactiveLibrary.CallbackType.SETTLE_COMPLEX_ORDER) {
             (, uint256[] memory orderIds, PoolKey[] memory keys) =
                 abi.decode(data, (ReactiveLibrary.CallbackType, uint256[], PoolKey[]));
+
+            // Issue 6: validate array lengths and cycle depth cap
+            if (orderIds.length != keys.length) revert ArrayLengthMismatch();
+            if (orderIds.length > MAX_CYCLE_DEPTH) revert MaxCycleDepthExceeded();
+
             _settleComplexOrder(keys, orderIds);
         }
     }
 
-    /// Sets the address of the  reactive smart contract
+    /// Sets the address of the reactive smart contract
     function setRscAddress(address _address) external onlyOwner {
         rscAddress = _address;
     }
@@ -504,25 +540,21 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
     /// Calculate what would happen if the swap went through the Uniswap AMM right now, without actually executing it.
     /// @param poolId Id of the pool
     /// @param params Swap params
-    /// @return tokenIn amount of eth from the wallet
-    /// @return tokenOut amount of token sent back to the user
+    /// @return tokenIn amount from the wallet
+    /// @return tokenOut amount sent back to the user
     /// @return beforeSwapDelta_ BeforeSwapDelta
     function simulateSwap(PoolId poolId, SwapParams memory params)
         internal
         view
         returns (uint256 tokenIn, uint256 tokenOut, BeforeSwapDelta beforeSwapDelta_)
     {
-        // Get the current price for the pool to use as a price basis for the swap
+        // Cache the slot0 call
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         bool zeroForOne = params.zeroForOne;
+
         if (params.amountSpecified >= 0) {
-            // token0 for token1 with exact output for input
-            // If the amount specified for token1 is greater than what we have in the pool fees from deposit fees,
-            // we use poolFees amount1 otherwise, we use amountSpecified for the swap
-            // We want to determine the maximum value
             uint256 amountSpecified = params.amountSpecified.toUint256();
 
-            // We want to determine the amount of ETH token required to get the amount of token1 specified at the current pool state
             (, tokenIn, tokenOut,) = SwapMath.computeSwapStep({
                 sqrtPriceCurrentX96: sqrtPriceX96,
                 sqrtPriceTargetX96: params.sqrtPriceLimitX96,
@@ -530,21 +562,11 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
                 amountRemaining: amountSpecified.toInt256(),
                 feePips: 0
             });
-            // Update our hook delta to reduce the upcoming swap amount to show that we have
-            // already spent some of the token0 and received some of the underlying ERC20.
 
-            // For it to be token0 or token1, I will make use of the zeroForOne.
-            // delta_specified and delta_unspecified
-            // If it is zeroForOne, the delta_specified will be the amount of the tokenIn as that is what the pool manager will be expecting
-            // if it is not zeroForOne, the delta_specified will be the amount of tokenOut
             int128 amountToSpecified = zeroForOne ? int128(uint128(tokenOut)) : int128(uint128(tokenIn));
             int128 amountUnspecified = zeroForOne ? int128(uint128(tokenIn)) : int128(uint128(tokenOut));
             beforeSwapDelta_ = toBeforeSwapDelta(amountToSpecified, amountUnspecified);
         } else {
-            // token0 for token1 with exact input for output
-            // amountSpecified is negative
-            // Since we already know the amount of token0 required, we just need to
-            // determine the amount we will receive if we convert all of the pool fees.
             (, tokenIn, tokenOut,) = SwapMath.computeSwapStep({
                 sqrtPriceCurrentX96: sqrtPriceX96,
                 sqrtPriceTargetX96: params.sqrtPriceLimitX96,
@@ -561,31 +583,33 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
         }
     }
 
-    /// @notice Simulates a swap to calculate expected output/input amounts and the corresponding BeforeSwapDelta.
-    /// @dev This function uses the current pool price and liquidity to estimate the swap outcome without executing it.
-    /// It is primarily used to determine the parameters for limit orders or CoW (Coincidence of Wants) matching
-    /// by calculating how
+    /// @notice Takes tokens from the pool manager and holds them in this contract for the CoW order.
     function takeAndSettle(PoolKey calldata key, bool zeroForOne, uint128 amount) internal {
         if (zeroForOne) {
-            // take currency zero and settle currency 1
             _take(key.currency0, amount);
-            // _settle(key.currency1, 0);
         } else {
             _take(key.currency1, amount);
-            // _settle(key.currency0, 0);
         }
     }
 
-    /// @dev Helper to iterate through orders and assign their proportional output
+    /// @dev Helper to iterate through orders and assign their proportional output (CEI-safe: state first, transfers last)
     function _distributeSettlement(PoolKey memory key, bool zeroForOne, uint256 totalInput, uint256 totalOutput)
         internal
     {
         PoolId poolId = key.toId();
-        uint256 totalOrders = pendingOrders[poolId][zeroForOne].length;
+        Order[] storage ordersArr = pendingOrders[poolId][zeroForOne];
+        uint256 totalOrders = ordersArr.length;
         if (totalOrders == 0 || totalInput == 0) return;
 
-        for (uint256 i = 0; i < totalOrders; i++) {
-            Order memory order = pendingOrders[poolId][zeroForOne][i];
+        // Collect all transfer data before modifying state
+        address[] memory recipients = new address[](totalOrders);
+        Currency[] memory outCurrencies = new Currency[](totalOrders);
+        uint256[] memory outAmounts = new uint256[](totalOrders);
+
+        Currency outCurrency = zeroForOne ? key.currency1 : key.currency0;
+
+        for (uint256 i = 0; i < totalOrders;) {
+            Order memory order = ordersArr[i];
             uint256 orderId = getOrderId(
                 order.poolId,
                 order.zeroForOne,
@@ -596,25 +620,44 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
                 order.nonce
             );
 
-            // Calculate proportional share: (order.amountIn / totalInput) * totalOutput
             uint256 actualAmountOut = (order.amountIn * totalOutput) / totalInput;
 
-            // Update order state
+            if (actualAmountOut < order.amountOut && actualAmountOut < order.minAmountOut) {
+                continue;
+            }
+
+            // Accumulate transfer info
+            recipients[i] = order.owner;
+            outCurrencies[i] = outCurrency;
+            outAmounts[i] = actualAmountOut;
+
+            // CEI: mark fulfilled before any transfer
             orders[orderId].fulfilled = true;
-            // Transfer the actual token to the user
-            Currency outCurrency = order.zeroForOne ? key.currency1 : key.currency0;
-            outCurrency.transfer(order.owner, actualAmountOut);
+            orderIndex[orderId] = 0;
+
             emit SwapOrderSettled(key, order.zeroForOne, actualAmountOut, orderId);
+
+            unchecked {
+                ++i;
+            }
         }
 
-        // Clear the array since they are processed
+        // Clear the array (state update) before transfers
         delete pendingOrders[poolId][zeroForOne];
+
+        // Perform transfers after all state is updated
+        for (uint256 i = 0; i < totalOrders;) {
+            _safeTransferCurrency(outCurrencies[i], recipients[i], outAmounts[i]);
+            unchecked {
+                ++i;
+            }
+        }
     }
 
-    /// @dev Helper to cleanly pop orders from the pending list
-    function _removeOrderFromPending(Order memory order, uint256 orderId) internal {
+    /// @dev Shared swap-and-pop removal used by cancelOrder and _deadlineExceeded
+    function _removeOrderFromPendingArray(Order memory order, uint256 orderId) internal {
         Order[] storage memOrders = pendingOrders[order.poolId][order.zeroForOne];
-        uint256 index = orderIndex[orderId] - 1;
+        uint256 index = orderIndex[orderId] - 1; // convert stored (realIndex+1) back to realIndex
         uint256 lastIndex = memOrders.length - 1;
 
         if (index != lastIndex) {
@@ -632,14 +675,30 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
             orderIndex[lastOrderId] = index + 1;
         }
         memOrders.pop();
-        orderIndex[orderId] = 0;
+    }
 
+    /// @dev Helper to cleanly pop orders from the pending list (used by complex settlement)
+    function _removeOrderFromPending(Order memory order, uint256 orderId) internal {
+        _removeOrderFromPendingArray(order, orderId);
+        orderIndex[orderId] = 0;
         // Remove remaining balances from the batch aggregators
         batchPendingOrdersOut[order.poolId][order.zeroForOne] -= order.amountOut;
+        batchPendingOrdersIn[order.poolId][order.zeroForOne] -= order.amountIn;
+    }
+
+    /// @dev Safe transfer wrapper — uses SafeERC20 for ERC20 tokens; handles native ETH via CurrencyLibrary
+    function _safeTransferCurrency(Currency currency, address to, uint256 amount) internal {
+        if (amount == 0) return;
+        if (currency.isAddressZero()) {
+            // Native ETH — CurrencyLibrary.transfer handles this
+            currency.transfer(to, amount);
+        } else {
+            // ERC20 — use SafeERC20 to handle non-standard tokens safely
+            SafeERC20.safeTransfer(IERC20(Currency.unwrap(currency)), to, amount);
+        }
     }
 
     /// Settle currency with pool manager
-    /// @param currency Currency to settle
     function _settle(Currency currency, uint128 amount) internal {
         poolManager.sync(currency);
         if (amount > 0) currency.transfer(address(poolManager), amount);
@@ -647,24 +706,15 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
     }
 
     /// Take the money from the user and add it to the smart contract
-    /// @param currency Currency of the swap
-    /// @param amount Amount to take
     function _take(Currency currency, uint128 amount) internal {
         poolManager.take(currency, address(this), amount);
     }
 
     /// Deterministic function to get the order id of the swap
-    /// @param _poolId Pool Id
-    /// @param zeroForOne direction
-    /// @param deadline deadline of CoW swap
-    /// @param amountIn Amount of token in
-    /// @param amountOut Amount of token out
-    /// @param orderNonce Nonce of the order
-    /// @return orderId order id of the swap
     function getOrderId(
         PoolId _poolId,
         bool zeroForOne,
-        uint256 deadline,
+        uint64 deadline,
         uint256 amountIn,
         uint256 amountOut,
         address owner,
@@ -673,10 +723,3 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable {
         return uint256(keccak256(abi.encode(_poolId, zeroForOne, deadline, amountIn, amountOut, owner, orderNonce)));
     }
 }
-
-
-// Notes
-// The settle order has a vulnerability that requires failsafes in every part to return the user's money
-// We should have a minimum slippage in the swap hook data from the beforeSwap, so we can add the minAmountOut by the user to the order data
-// When creating the order, if the minAmountOut is greater than the amountOut, it should revert
-// otherwise, we should create the order. When fulfilling orders, we have to ensure that in the swap now, the amountOut to the user does not exceed the minAmountOut

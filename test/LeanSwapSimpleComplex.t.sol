@@ -4,8 +4,8 @@ pragma solidity 0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
-import {PoolManager} from "v4-core/PoolManager.sol";
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+// import {PoolManager} from "v4-core/PoolManager.sol";
+// import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
@@ -14,8 +14,8 @@ import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {LeanSwap} from "../src/LeanSwap.sol";
 import {SwapParams, ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
-import {IHooks} from "v4-core/interfaces/IHooks.sol";
-import {LeanSwapLibrary} from "../src/Library.sol";
+// import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import {LeanSwapLibrary, ReactiveLibrary} from "../src/Library.sol";
 
 contract LeanSwapTestExtended is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -36,7 +36,9 @@ contract LeanSwapTestExtended is Test, Deployers {
 
         uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
         address hookAddress = address(flags);
-        deployCodeTo("LeanSwap.sol", abi.encode(manager, address(0x0000000000000000000000000000000000fffFfF)), hookAddress);
+        deployCodeTo(
+            "LeanSwap.sol", abi.encode(manager, address(0x0000000000000000000000000000000000fffFfF)), hookAddress
+        );
         hook = LeanSwap(payable(hookAddress));
 
         (key, poolId) = initPool(currency0, currency1, hook, 3000, TickMath.getSqrtPriceAtTick(0));
@@ -83,13 +85,14 @@ contract LeanSwapTestExtended is Test, Deployers {
         }
     }
 
-    // Helper to extract orderId
-    function _getOrderId(bool zeroForOne, uint256 deadline, uint256 amtIn, uint256 amtOut, address owner)
-        internal
-        view
-        returns (uint256)
-    {
-        return uint256(keccak256(abi.encode(poolId, zeroForOne, deadline, amtIn, amtOut, owner)));
+    // Helper to extract orderId — mirrors LeanSwap.getOrderId (includes nonce)
+    // Order struct layout: owner, zeroForOne, fulfilled, canceled, deadline(uint64), poolId, amountIn, amountOut, nonce
+    function _getOrderId(bool zeroForOne, uint256 index) internal view returns (uint256) {
+        (,,,, uint64 dl,, uint256 amtIn, uint256 amtOut, uint256 nonce,) =
+            hook.pendingOrders(poolId, zeroForOne, index);
+        // Recover the owner by reading it from the order struct
+        (address owner,,,,,,,,,) = hook.pendingOrders(poolId, zeroForOne, index);
+        return uint256(keccak256(abi.encode(poolId, zeroForOne, dl, amtIn, amtOut, owner, nonce)));
     }
 
     // 1. Exact Output Swap
@@ -161,13 +164,15 @@ contract LeanSwapTestExtended is Test, Deployers {
         assertEq(hook.batchPendingOrdersIn(poolId, true), 2 ether);
         assertEq(hook.batchPendingOrdersIn(poolId, false), 2 ether);
 
-        hook._settleOrder(key);
+        vm.startPrank(address(0x0000000000000000000000000000000000fffFfF));
+        hook.callback(ReactiveLibrary.encodeCallbackPayload(key));
+        vm.stopPrank();
 
         assertEq(hook.batchPendingOrdersIn(poolId, true), 0);
         assertEq(hook.batchPendingOrdersIn(poolId, false), 0);
     }
 
-    // 3. Swap orders that are not equal in when they are batched
+    // 3. Swap orders that are not equal when they are batched
     function test_ordersNotEqualWhenBatched() public {
         uint256 amountInAlice = 1 ether; // Provide less
         uint256 amountInBob = 3 ether; // Provide more
@@ -195,9 +200,11 @@ contract LeanSwapTestExtended is Test, Deployers {
             LeanSwapLibrary.encodeHookData(deadline, true, bob)
         );
 
-        hook._settleOrder(key);
+        vm.startPrank(address(0x0000000000000000000000000000000000fffFfF));
+        hook.callback(ReactiveLibrary.encodeCallbackPayload(key));
+        vm.stopPrank();
 
-        // Remaining should be settled via AMM
+        // Both sides should be fully settled (remainder goes through AMM)
         assertEq(hook.batchPendingOrdersIn(poolId, true), 0);
         assertEq(hook.batchPendingOrdersIn(poolId, false), 0);
     }
@@ -213,18 +220,26 @@ contract LeanSwapTestExtended is Test, Deployers {
         swapRouter.swap(
             key,
             SwapParams({
-                zeroForOne: true, amountSpecified: -int256(amountIn), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                zeroForOne: true,
+                // casting to 'int256' is safe because amountIn < type(int256).max
+                // forge-lint: disable-next-line(unsafe-typecast)
+                amountSpecified: -int256(amountIn),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             hookData
         );
 
-        // Second order EXACT same parameters
+        // Second order EXACT same parameters — nonce increments so it gets a unique orderId
         vm.prank(alice);
         swapRouter.swap(
             key,
             SwapParams({
-                zeroForOne: true, amountSpecified: -int256(amountIn), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                zeroForOne: true,
+                // casting to 'int256' is safe because amountIn < type(int256).max
+                // forge-lint: disable-next-line(unsafe-typecast)
+                amountSpecified: -int256(amountIn),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             hookData
@@ -233,37 +248,35 @@ contract LeanSwapTestExtended is Test, Deployers {
         // Check if both orders were batched properly
         assertEq(hook.batchPendingOrdersIn(poolId, true), amountIn * 2);
 
-        // Try to cancel the first one? Wait, they share an orderId if not salted!
-        // We will see if it reverts or handles it gracefully.
-        // We can just query `pendingOrders` length
-        (,,,,, uint256 amtIn1,,,) = hook.pendingOrders(poolId, true, 0);
+        // Verify both orders exist in the pending array with the correct amountIn
+        // Order struct layout: owner, zeroForOne, fulfilled, canceled, deadline(uint64), poolId, amountIn, amountOut, nonce
+        (,,,,,, uint256 amtIn1,,,) = hook.pendingOrders(poolId, true, 0);
         assertEq(amtIn1, amountIn);
-        (,,,,, uint256 amtIn2,,,) = hook.pendingOrders(poolId, true, 1);
+        (,,,,,, uint256 amtIn2,,,) = hook.pendingOrders(poolId, true, 1);
         assertEq(amtIn2, amountIn);
 
-        // Getting the orderId
-        // uint256 orderId = _getOrderId(true, deadline, amtIn1, 0, alice); // We don't know amountOut trivially here because of test mock, let's just use pendingOrders
+        // vm.warp(deadline + 1);
 
-        // Let's grab it directly from the contract mapping if needed,
-        //, but actually we just call deadlineExceeded
-        vm.warp(deadline + 1);
-
-        // Try to trigger one of the identical orders
-        // wait, we don't have amountOut to compute orderId.
-        // Let's just create an opposite order to see if it settles both correctly!
+        // Bob places an opposite order to trigger batch settlement of both alice orders.
+        // Use a fresh deadline AFTER the warp so Bob's own swap doesn't revert with DeadlineExpired.
+        uint256 bobDeadline = block.timestamp + 1 hours;
         vm.prank(bob);
         swapRouter.swap(
             key,
             SwapParams({
                 zeroForOne: false,
+                // casting to 'int256' is safe because amountIn * 2 < type(int256).max
+                // forge-lint: disable-next-line(unsafe-typecast)
                 amountSpecified: -int256(amountIn * 2),
                 sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
             }),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            LeanSwapLibrary.encodeHookData(deadline, true, bob)
+            LeanSwapLibrary.encodeHookData(bobDeadline, true, bob)
         );
 
-        hook._settleOrder(key);
+        vm.startPrank(address(0x0000000000000000000000000000000000fffFfF));
+        hook.callback(ReactiveLibrary.encodeCallbackPayload(key));
+        vm.stopPrank();
 
         assertEq(hook.batchPendingOrdersIn(poolId, true), 0);
     }

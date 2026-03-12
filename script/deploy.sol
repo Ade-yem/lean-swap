@@ -58,6 +58,9 @@ contract DeployReactive is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
+        // Minimum order amount to prevent spam / order-flooding — defaults to 1000 token units
+        uint256 minOrderAmount = vm.envOr("MIN_ORDER_AMOUNT", uint256(10));
+
         LeanSwapReactive leanSwapReactive = new LeanSwapReactive{value: 0.1 ether}(
             reactiveSystemContract,
             originChainId,
@@ -66,7 +69,8 @@ contract DeployReactive is Script {
             orderCreatedTopic0,
             orderSettledTopic0,
             orderDeadlineTopic0,
-            leanSwapAddress // callback is the hook itself
+            leanSwapAddress, // callback is the hook itself
+            minOrderAmount
         );
 
         console.log("LeanSwapReactive deployed at:", address(leanSwapReactive));

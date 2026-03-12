@@ -4,8 +4,8 @@ pragma solidity 0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
-import {PoolManager} from "v4-core/PoolManager.sol";
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+// import {PoolManager} from "v4-core/PoolManager.sol";
+// import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
@@ -15,7 +15,7 @@ import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {LeanSwap} from "../src/LeanSwap.sol";
 import {SwapParams, ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
-import {LeanSwapLibrary} from "../src/Library.sol";
+import {LeanSwapLibrary, ReactiveLibrary} from "../src/Library.sol";
 
 contract LeanSwapTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -33,7 +33,9 @@ contract LeanSwapTest is Test, Deployers {
 
         uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
         address hookAddress = address(flags);
-        deployCodeTo("LeanSwap.sol", abi.encode(manager, address(0x0000000000000000000000000000000000fffFfF)), hookAddress);
+        deployCodeTo(
+            "LeanSwap.sol", abi.encode(manager, address(0x0000000000000000000000000000000000fffFfF)), hookAddress
+        );
         hook = LeanSwap(payable(hookAddress));
 
         (key, poolId) = initPool(currency0, currency1, hook, 3000, TickMath.getSqrtPriceAtTick(0));
@@ -75,7 +77,11 @@ contract LeanSwapTest is Test, Deployers {
         swapRouter.swap(
             key,
             SwapParams({
-                zeroForOne: true, amountSpecified: -int256(amountIn), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                // casting to 'int256' is safe because [explain why]
+                // forge-lint: disable-next-line(unsafe-typecast)
+                zeroForOne: true,
+                amountSpecified: -int256(amountIn),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             hookData
@@ -98,7 +104,11 @@ contract LeanSwapTest is Test, Deployers {
         swapRouter.swap(
             key,
             SwapParams({
-                zeroForOne: true, amountSpecified: -int256(amountIn), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                // casting to 'int256' is safe because [explain why]
+                // forge-lint: disable-next-line(unsafe-typecast)
+                zeroForOne: true,
+                amountSpecified: -int256(amountIn),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             hookData
@@ -109,19 +119,21 @@ contract LeanSwapTest is Test, Deployers {
         assertEq(hook.batchPendingOrdersIn(poolId, true), amountIn);
         assertEq(bal0AfterHook - bal0BeforeHook, amountIn);
 
-        (address owner,, bool zeroForOne, bool fulfilled, bool canceled, uint256 amtIn,, uint256 dl,) =
+        // New struct layout: owner, zeroForOne, fulfilled, canceled, deadline(uint64), poolId, amountIn, amountOut, nonce
+        (address owner, bool zeroForOne, bool fulfilled, bool canceled, uint64 dl,, uint256 amtIn,,,) =
             hook.pendingOrders(poolId, true, 0);
         assertEq(owner, alice);
         assertEq(zeroForOne, true);
         assertEq(fulfilled, false);
         assertEq(canceled, false);
         assertEq(amtIn, amountIn);
-        assertEq(dl, deadline);
+        assertEq(uint256(dl), deadline);
     }
 
     // Helper to extract orderId
     function _getOrderId(bool zeroForOne) internal view returns (uint256) {
-        (,,,,, uint256 amtIn, uint256 amtOut, uint256 dl, uint256 nonce) = hook.pendingOrders(poolId, zeroForOne, 0);
+        // New struct layout: owner, zeroForOne, fulfilled, canceled, deadline(uint64), poolId, amountIn, amountOut, nonce
+        (,,,, uint64 dl,, uint256 amtIn, uint256 amtOut, uint256 nonce,) = hook.pendingOrders(poolId, zeroForOne, 0);
         return uint256(keccak256(abi.encode(poolId, zeroForOne, dl, amtIn, amtOut, alice, nonce)));
     }
 
@@ -134,7 +146,11 @@ contract LeanSwapTest is Test, Deployers {
         swapRouter.swap(
             key,
             SwapParams({
-                zeroForOne: true, amountSpecified: -int256(amountIn), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                // casting to 'int256' is safe because [explain why]
+                // forge-lint: disable-next-line(unsafe-typecast)
+                zeroForOne: true,
+                amountSpecified: -int256(amountIn),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             hookData
@@ -164,7 +180,11 @@ contract LeanSwapTest is Test, Deployers {
         swapRouter.swap(
             key,
             SwapParams({
-                zeroForOne: true, amountSpecified: -int256(amountIn), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                // casting to 'int256' is safe because [explain why]
+                // forge-lint: disable-next-line(unsafe-typecast)
+                zeroForOne: true,
+                amountSpecified: -int256(amountIn),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             hookData
@@ -174,7 +194,7 @@ contract LeanSwapTest is Test, Deployers {
         uint256 orderId = _getOrderId(true);
 
         vm.startPrank(bob);
-        vm.expectRevert(LeanSwap.NotOnwerOfOrder.selector);
+        vm.expectRevert(LeanSwap.NotOwnerOfOrder.selector);
         hook.cancelOrder(key, orderId);
         vm.stopPrank();
     }
@@ -188,7 +208,11 @@ contract LeanSwapTest is Test, Deployers {
         swapRouter.swap(
             key,
             SwapParams({
-                zeroForOne: true, amountSpecified: -int256(amountIn), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                // casting to 'int256' is safe because [explain why]
+                // forge-lint: disable-next-line(unsafe-typecast)
+                zeroForOne: true,
+                amountSpecified: -int256(amountIn),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             hookData
@@ -196,8 +220,9 @@ contract LeanSwapTest is Test, Deployers {
 
         uint256 orderId = _getOrderId(true);
 
+        vm.startPrank(address(0x0000000000000000000000000000000000fffFfF));
         vm.expectRevert(LeanSwap.DeadlineNotMatured.selector);
-        hook._deadlineExceeded(key, orderId);
+        hook.callback(ReactiveLibrary.encodeDeadlineCallbackPayload(orderId, key));
         vm.stopPrank();
     }
 
@@ -210,7 +235,11 @@ contract LeanSwapTest is Test, Deployers {
         swapRouter.swap(
             key,
             SwapParams({
-                zeroForOne: true, amountSpecified: -int256(amountIn), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                // casting to 'int256' is safe because [explain why]
+                // forge-lint: disable-next-line(unsafe-typecast)
+                zeroForOne: true,
+                amountSpecified: -int256(amountIn),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             hookData
@@ -223,8 +252,10 @@ contract LeanSwapTest is Test, Deployers {
 
         uint256 bal1Before = currency1.balanceOf(alice);
 
-        // Anyone can call deadlineExceeded since it just processes the swap for the original owner
-        hook._deadlineExceeded(key, orderId);
+        // call through callback
+        vm.startPrank(address(0x0000000000000000000000000000000000fffFfF));
+        hook.callback(ReactiveLibrary.encodeDeadlineCallbackPayload(orderId, key));
+        vm.stopPrank();
 
         uint256 bal1After = currency1.balanceOf(alice);
 
@@ -243,7 +274,11 @@ contract LeanSwapTest is Test, Deployers {
         swapRouter.swap(
             key,
             SwapParams({
-                zeroForOne: true, amountSpecified: -int256(amountIn), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                // casting to 'int256' is safe because [explain why]
+                // forge-lint: disable-next-line(unsafe-typecast)
+                zeroForOne: true,
+                amountSpecified: -int256(amountIn),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             aliceHookData
@@ -255,7 +290,11 @@ contract LeanSwapTest is Test, Deployers {
         swapRouter.swap(
             key,
             SwapParams({
-                zeroForOne: false, amountSpecified: -int256(amountIn), sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
+                // casting to 'int256' is safe because [explain why]
+                // forge-lint: disable-next-line(unsafe-typecast)
+                zeroForOne: false,
+                amountSpecified: -int256(amountIn),
+                sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
             }),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             bobHookData
@@ -265,7 +304,9 @@ contract LeanSwapTest is Test, Deployers {
         uint256 aliceBal1Before = currency1.balanceOf(alice);
         uint256 bobBal0Before = currency0.balanceOf(bob);
 
-        hook._settleOrder(key);
+        vm.startPrank(address(0x0000000000000000000000000000000000fffFfF));
+        hook.callback(ReactiveLibrary.encodeCallbackPayload(key));
+        vm.stopPrank();
 
         assertEq(currency1.balanceOf(alice) - aliceBal1Before, amountIn); // 1:1 match
         assertEq(currency0.balanceOf(bob) - bobBal0Before, amountIn); // 1:1 match
