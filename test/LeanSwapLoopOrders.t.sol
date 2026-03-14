@@ -178,9 +178,8 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         // Sort by address
         (Currency c0, Currency c1) = Currency.unwrap(a) < Currency.unwrap(b) ? (a, b) : (b, a);
 
-        poolKey_ = PoolKey({
-            currency0: c0, currency1: c1, fee: FEE, tickSpacing: TICK_SPACING, hooks: IHooks(address(_hook))
-        });
+        poolKey_ =
+            PoolKey({currency0: c0, currency1: c1, fee: FEE, tickSpacing: TICK_SPACING, hooks: IHooks(address(_hook))});
         poolId_ = poolKey_.toId();
 
         // Approve router to spend hook tokens (needed for liquidity)
