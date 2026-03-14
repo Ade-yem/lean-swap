@@ -11,6 +11,7 @@ import {SwapMath} from "@uniswap/v4-core/src/libraries/SwapMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 import {AbstractCallback} from "reactive-lib/abstract-base/AbstractCallback.sol";
+import {IPayable} from "reactive-lib/interfaces/IPayable.sol";
 
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 
@@ -531,7 +532,10 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable, ReentrancyGuard {
 
     /// Sets the address of the reactive smart contract
     function setRscAddress(address _address) external onlyOwner {
+        addAuthorizedSender(_address);
         rscAddress = _address;
+        vendor = IPayable(payable(_address));
+        rvm_id = _address;
     }
 
     // =================== Helper Functions ==================

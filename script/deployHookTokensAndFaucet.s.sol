@@ -67,7 +67,7 @@ contract DeployTestnet is Script {
         manager.initialize(key, sqrtPriceX96);
 
         // Mint lots of tokens to deployer to provide liquidity easily
-        address deployer = msg.sender;
+        address deployer = vm.addr(vm.envUint("PRIVATE_KEY"));
         TestnetToken(token0).mint(deployer, reserve0 * 1000);
         TestnetToken(token1).mint(deployer, reserve1 * 1000);
 
