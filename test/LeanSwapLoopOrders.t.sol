@@ -141,10 +141,10 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
 
         // 5. Create sorted pool keys (currency0 must be the lower address)
         //    and init each pool + add liquidity
-        (keyEthDai,  pidEthDai)  = _initPool(cETH,  cDAI,  hook);
-        (keyDaiCow,  pidDaiCow)  = _initPool(cDAI,  cCOW,  hook);
-        (keyCowUsdc, pidCowUsdc) = _initPool(cCOW,  cUSDC, hook);
-        (keyUsdcEth, pidUsdcEth) = _initPool(cUSDC, cETH,  hook);
+        (keyEthDai,  pidEthDai)  = _initPool(cETH,  cDAI,  hook, 0);
+        (keyDaiCow,  pidDaiCow)  = _initPool(cDAI,  cCOW,  hook, 0);
+        (keyCowUsdc, pidCowUsdc) = _initPool(cCOW,  cUSDC, hook, 0);
+        (keyUsdcEth, pidUsdcEth) = _initPool(cUSDC, cETH,  hook, 0);
 
         // 6. Deploy reactive contract (in VM mode — no real subscriptions)
         reactive = new LeanSwapReactive(
@@ -173,7 +173,7 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
 
     /// @dev Sort two currencies so currency0 < currency1 (Uniswap v4 requirement),
     ///      then initialize the pool and add symmetric deep liquidity.
-    function _initPool(Currency a, Currency b, LeanSwap _hook)
+    function _initPool(Currency a, Currency b, LeanSwap _hook, int24 tick)
         internal
         returns (PoolKey memory poolKey_, PoolId poolId_)
     {
@@ -197,7 +197,7 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         MockERC20(Currency.unwrap(c0)).mint(address(this), 200_000 ether);
         MockERC20(Currency.unwrap(c1)).mint(address(this), 200_000 ether);
 
-        manager.initialize(poolKey_, TickMath.getSqrtPriceAtTick(0));
+        manager.initialize(poolKey_, TickMath.getSqrtPriceAtTick(tick));
 
         modifyLiquidityRouter.modifyLiquidity(
             poolKey_,

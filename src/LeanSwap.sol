@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: SEE LICENSE IN LICENSE
 pragma solidity 0.8.26;
-
+import {console} from "forge-std/console.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -290,30 +290,24 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable, ReentrancyGuard {
         _distributeSettlement(key, false, amountOfToken1In, totalToken0ForToken1Sellers);
     }
 
-    /// @notice Settles a complex CoW cycle (e.g., A -> B -> C -> A)
+    /// @notice Settles a complex CoW cycle (e.g., A -> B -> C -> A) using Exact Input AMM routing
     /// @param keys Array of PoolKeys corresponding to each order's intended swap
     /// @param orderIds Array of order IDs that form the closed loop
     function _settleComplexOrder(PoolKey[] memory keys, uint256[] memory orderIds) internal nonReentrant {
         uint256 cycleLength = orderIds.length;
         if (cycleLength < 2) return;
-        // Issue 6: validate array lengths are consistent and within bounds
         if (keys.length != cycleLength) revert ArrayLengthMismatch();
         if (cycleLength > MAX_CYCLE_DEPTH) revert MaxCycleDepthExceeded();
 
-        // 1. Verify and Load all orders — also validates poolKey matches order
         Order[] memory cycleOrders = new Order[](cycleLength);
+
+        // 1. Verify and Load
         for (uint256 i = 0; i < cycleLength;) {
             uint256 oId = orderIds[i];
-            // Issue 8: skip already-settled/cancelled orders gracefully
             if (orderIndex[oId] == 0) revert SwapOrderNotFound();
             Order memory o = orders[oId];
             if (o.fulfilled || o.canceled) revert SwapOrderNotFound();
-
-            // Issue 12: validate that the supplied PoolKey matches the order's poolId
             if (PoolId.unwrap(o.poolId) != PoolId.unwrap(keys[i].toId())) revert PoolKeyMismatch();
-
-            // Issue 11: deadline enforcement inside settlement
-            // if (o.deadline != 0 && block.timestamp > uint256(o.deadline)) revert DeadlineExpired();
 
             cycleOrders[i] = o;
             unchecked {
@@ -321,38 +315,50 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable, ReentrancyGuard {
             }
         }
 
-        // 2. Process the closed loop sequentially — CEI: update all state FIRST, then transfer
-        // Collect amounts to transfer so we can perform transfers after all state updates
+        // 2. PASS 1: Calculate internal matches to break the forward loop dependency
+        // internalMatches[i] = amount of TokenOut that order `i` receives directly from order `i+1`
+        uint256[] memory internalMatches = new uint256[](cycleLength);
+        for (uint256 i = 0; i < cycleLength;) {
+            uint256 nextIdx = (i + 1) % cycleLength;
+
+            uint256 amountDemanded = cycleOrders[i].amountOut;
+            uint256 amountProvidedByNext = cycleOrders[nextIdx].amountIn;
+
+            // Match is the minimum of what `i` wants and what `i+1` provides
+            internalMatches[i] = amountDemanded < amountProvidedByNext ? amountDemanded : amountProvidedByNext;
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        // Setup arrays to defer transfers until all state/AMM calls are finished
         address[] memory recipients = new address[](cycleLength);
         Currency[] memory outCurrencies = new Currency[](cycleLength);
         uint256[] memory outAmounts = new uint256[](cycleLength);
 
+        // 3. PASS 2: AMM Routing and Slippage Checks
         for (uint256 i = 0; i < cycleLength;) {
-            uint256 nextIdx = (i + 1) % cycleLength;
             Order memory currentOrder = cycleOrders[i];
-            Order memory nextOrder = cycleOrders[nextIdx];
             PoolKey memory currentKey = keys[i];
 
-            Currency tokenOut = currentOrder.zeroForOne ? currentKey.currency1 : currentKey.currency0;
-
-            uint256 amountDemanded = currentOrder.amountOut;
-            uint256 amountProvidedInternally = nextOrder.amountIn;
+            // The previous order in the ring determines how much of our input was spent internally
+            uint256 prevIdx = (i + cycleLength - 1) % cycleLength;
 
             recipients[i] = currentOrder.owner;
-            outCurrencies[i] = tokenOut;
+            outCurrencies[i] = currentOrder.zeroForOne ? currentKey.currency1 : currentKey.currency0;
 
-            if (amountProvidedInternally >= amountDemanded) {
-                // Full internal match — next order's amountIn covers the full demand.
-                // NOTE: do NOT touch nextOrder's batch here; _removeOrderFromPending
-                // handles batchPendingOrdersIn cleanup for each order in its own iteration.
-                outAmounts[i] = amountDemanded;
-            } else {
-                // Partial internal match — swap the deficit via the V4 AMM
-                uint256 deficitToSwap = amountDemanded - amountProvidedInternally;
+            // What currentOrder receives from the internal ring
+            uint256 internalOutputReceived = internalMatches[i];
 
-                // Total tokenIn available to cover the AMM swap for this order
-                uint256 maxTokenInForAmm = currentOrder.amountIn;
+            // What currentOrder spent internally (given to the previous order)
+            uint256 internalInputSpent = internalMatches[prevIdx];
 
+            // The unspent input is routed to the AMM (Exact Input)
+            uint256 inputForAmm = currentOrder.amountIn - internalInputSpent;
+            uint256 ammOutputReceived = 0;
+
+            if (inputForAmm > 0) {
                 BalanceDelta delta = abi.decode(
                     poolManager.unlock(
                         abi.encode(
@@ -360,7 +366,7 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable, ReentrancyGuard {
                                 key: currentKey,
                                 params: SwapParams({
                                     zeroForOne: currentOrder.zeroForOne,
-                                    amountSpecified: int256(deficitToSwap), // Exact output
+                                    amountSpecified: -inputForAmm.toInt256(), // Exact input (negative)
                                     sqrtPriceLimitX96: currentOrder.zeroForOne
                                         ? TickMath.MIN_SQRT_PRICE + 1
                                         : TickMath.MAX_SQRT_PRICE - 1
@@ -373,31 +379,32 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable, ReentrancyGuard {
                     (BalanceDelta)
                 );
 
-                // The AMM input cost (positive = spent from the hook)
-                int256 inputDelta = currentOrder.zeroForOne ? delta.amount0() : delta.amount1();
-                uint256 tokenInSpent = uint256(inputDelta < 0 ? -inputDelta : inputDelta);
-
-                // Issue 5 fix: insolvency check - AMM must not cost more than the order deposited
-                if (tokenInSpent > maxTokenInForAmm) revert FundInsolvency();
-
-                uint256 ammFulfilled =
-                    currentOrder.zeroForOne ? uint256(int256(delta.amount1())) : uint256(int256(delta.amount0()));
-
-                outAmounts[i] = amountProvidedInternally + ammFulfilled;
+                int256 outputDelta = currentOrder.zeroForOne ? delta.amount1() : delta.amount0();
+                ammOutputReceived = outputDelta < 0 ? uint256(-outputDelta) : uint256(outputDelta);
             }
 
-            // CEI: mark fulfilled and remove from pending BEFORE transferring
+            uint256 totalOutput = internalOutputReceived + ammOutputReceived;
+
+            // Slippage check: Did the combined output meet the user's limit?
+            if (totalOutput < currentOrder.amountOut && totalOutput < currentOrder.minAmountOut) {
+                revert FundInsolvency();
+            }
+
+            outAmounts[i] = totalOutput;
+
+            // CEI: Mark fulfilled and remove from pending BEFORE external token transfers
             orders[orderIds[i]].fulfilled = true;
             _removeOrderFromPending(currentOrder, orderIds[i]);
 
-            emit SwapOrderSettled(currentKey, currentOrder.zeroForOne, outAmounts[i], orderIds[i]);
+            emit SwapOrderSettled(currentKey, currentOrder.zeroForOne, totalOutput, orderIds[i]);
 
             unchecked {
                 ++i;
             }
         }
 
-        // 3. All state updated — now perform the transfers (Interactions last)
+        // 4. PASS 3: Safe Transfers (Interactions)
+        // Grouped at the very end to enforce strict Checks-Effects-Interactions
         for (uint256 i = 0; i < cycleLength;) {
             _safeTransferCurrency(outCurrencies[i], recipients[i], outAmounts[i]);
             unchecked {
@@ -464,8 +471,9 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable, ReentrancyGuard {
             (BalanceDelta)
         );
         Currency token = order.zeroForOne ? key.currency1 : key.currency0;
-        uint256 amountToSend =
-            order.zeroForOne ? int256(delta.amount1()).toUint256() : int256(delta.amount0()).toUint256();
+        uint256 amountToSend = order.zeroForOne
+            ? int256(delta.amount1() < 0 ? -delta.amount1() : delta.amount1()).toUint256()
+            : int256(delta.amount0() < 0 ? -delta.amount0() : delta.amount0()).toUint256();
 
         // Interactions last
         _safeTransferCurrency(token, order.owner, amountToSend);
