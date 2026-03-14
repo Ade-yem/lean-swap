@@ -16,11 +16,10 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 
 interface IPoolModifyLiquidityTest {
-    function modifyLiquidity(
-        PoolKey memory key,
-        ModifyLiquidityParams memory params,
-        bytes memory hookData
-    ) external payable returns (BalanceDelta delta);
+    function modifyLiquidity(PoolKey memory key, ModifyLiquidityParams memory params, bytes memory hookData)
+        external
+        payable
+        returns (BalanceDelta delta);
 }
 
 contract DeployTestnet is Script {
@@ -45,13 +44,16 @@ contract DeployTestnet is Script {
     }
 
     function setupPool(
-        address tokenA, uint256 reserveA,
-        address tokenB, uint256 reserveB,
+        address tokenA,
+        uint256 reserveA,
+        address tokenB,
+        uint256 reserveB,
         address hookAddress,
         int256 liquidityDelta
     ) internal returns (PoolKey memory key) {
-        (address token0, address token1, uint256 reserve0, uint256 reserve1) = 
-            tokenA < tokenB ? (tokenA, tokenB, reserveA, reserveB) : (tokenB, tokenA, reserveB, reserveA);
+        (address token0, address token1, uint256 reserve0, uint256 reserve1) = tokenA < tokenB
+            ? (tokenA, tokenB, reserveA, reserveB)
+            : (tokenB, tokenA, reserveB, reserveA);
 
         key = PoolKey({
             currency0: Currency.wrap(token0),
@@ -91,7 +93,6 @@ contract DeployTestnet is Script {
         address poolManager = address(0x00B036B58a818B1BC34d502D3fE730Db729e62AC);
         address poolModifyLiquidityTest = address(0x5fa728C0A5cfd51BEe4B060773f50554c0C8A7AB);
         address create2Deployer = address(0x4e59b44847b379578588920cA78FbF26c0B4956C);
-        
 
         manager = IPoolManager(poolManager);
         modifyLiquidityRouter = IPoolModifyLiquidityTest(poolModifyLiquidityTest);
@@ -113,13 +114,7 @@ contract DeployTestnet is Script {
         console.log("tCOW:", address(tCOW));
 
         // 2. Deploy Faucet
-        Faucet faucet = new Faucet(
-            address(tUSDC),
-            address(tDAI),
-            address(tLEAN),
-            address(tETH),
-            address(tCOW)
-        );
+        Faucet faucet = new Faucet(address(tUSDC), address(tDAI), address(tLEAN), address(tETH), address(tCOW));
         console.log("Faucet deployed at:", address(faucet));
 
         tUSDC.setFaucet(address(faucet));
@@ -135,9 +130,10 @@ contract DeployTestnet is Script {
         address reactiveSystemContract = address(0x0000000000000000000000000000000000fffFfF);
         uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
         bytes memory constructorArgs = abi.encode(poolManager, reactiveSystemContract); // Placeholder reactive
-        
-        (address hookAddress, bytes32 salt) = HookMiner.find(create2Deployer, flags, type(LeanSwap).creationCode, constructorArgs);
-        
+
+        (address hookAddress, bytes32 salt) =
+            HookMiner.find(create2Deployer, flags, type(LeanSwap).creationCode, constructorArgs);
+
         LeanSwap leanSwap = new LeanSwap{salt: salt}(IPoolManager(poolManager), reactiveSystemContract);
         require(address(leanSwap) == hookAddress, "Hook address mismatch");
         console.log("LeanSwap Hook deployed at:", hookAddress);
@@ -146,20 +142,19 @@ contract DeployTestnet is Script {
         // Ratios:
         // 1 tETH = 2000 tUSDC => (1e18, 2000e6)
         setupPool(address(tETH), 1e18, address(tUSDC), 2000e6, hookAddress, 1e14);
-        
+
         // 1 tETH = 2000 tDAI => (1e18, 2000e18)
         setupPool(address(tETH), 1e18, address(tDAI), 2000e18, hookAddress, 4e19);
-        
+
         // 1 tUSDC = 1 tDAI => (1e6, 1e18)
         setupPool(address(tUSDC), 1e6, address(tDAI), 1e18, hookAddress, 1e12);
-        
+
         // 1 tCOW = 100 tLEAN => (1e18, 100e18)
         setupPool(address(tCOW), 1e18, address(tLEAN), 100e18, hookAddress, 1e19);
 
         // 1 tUSDC = 20 tCOW => (1e6, 20e18)
         setupPool(address(tUSDC), 1e6, address(tCOW), 20e18, hookAddress, 4e12);
 
-        
         vm.stopBroadcast();
     }
 }

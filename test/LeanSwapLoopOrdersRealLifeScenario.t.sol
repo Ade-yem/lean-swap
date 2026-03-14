@@ -145,9 +145,8 @@ contract LeanSwapLoopOrdersRealLifeScenarioWithDifferentPricePointsTest is Test,
         (Currency c0, Currency c1) = isA_C0 ? (a, b) : (b, a);
         int24 tick = isA_C0 ? tickIfAIsC0 : tickIfAIsC1;
 
-        poolKey_ = PoolKey({
-            currency0: c0, currency1: c1, fee: FEE, tickSpacing: TICK_SPACING, hooks: IHooks(address(_hook))
-        });
+        poolKey_ =
+            PoolKey({currency0: c0, currency1: c1, fee: FEE, tickSpacing: TICK_SPACING, hooks: IHooks(address(_hook))});
         poolId_ = poolKey_.toId();
 
         MockERC20(Currency.unwrap(c0)).approve(address(modifyLiquidityRouter), type(uint256).max);

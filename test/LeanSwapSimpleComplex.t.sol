@@ -88,8 +88,7 @@ contract LeanSwapTestExtended is Test, Deployers {
     // Helper to extract orderId — mirrors LeanSwap.getOrderId (includes nonce)
     // Order struct layout: owner, zeroForOne, fulfilled, canceled, deadline(uint64), poolId, amountIn, amountOut, nonce
     function _getOrderId(bool zeroForOne, uint256 index) internal view returns (uint256) {
-        (,,,, uint64 dl,, uint256 amtIn, uint256 amtOut, uint256 nonce,) =
-            hook.pendingOrders(poolId, zeroForOne, index);
+        (,,,, uint64 dl,, uint256 amtIn, uint256 amtOut, uint256 nonce,) = hook.pendingOrders(poolId, zeroForOne, index);
         // Recover the owner by reading it from the order struct
         (address owner,,,,,,,,,) = hook.pendingOrders(poolId, zeroForOne, index);
         return uint256(keccak256(abi.encode(poolId, zeroForOne, dl, amtIn, amtOut, owner, nonce)));

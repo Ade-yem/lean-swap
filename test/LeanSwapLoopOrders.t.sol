@@ -62,11 +62,11 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
 
     // ── Constants ─────────────────────────────────────────────────────────────
     address constant RSC_ADDR = address(0x0000000000000000000000000000000000fffFfF);
-    uint24  constant FEE      = 3000;
-    int24   constant TICK_SPACING = 60;
+    uint24 constant FEE = 3000;
+    int24 constant TICK_SPACING = 60;
 
     // ── Contracts ─────────────────────────────────────────────────────────────
-    LeanSwap      hook;
+    LeanSwap hook;
     LeanSwapReactive reactive;
 
     // ── Tokens (sorted by address after deployment) ───────────────────────────
@@ -84,10 +84,10 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
     // ── Pool keys ─────────────────────────────────────────────────────────────
     // Uniswap v4 requires currency0 < currency1 (by address).
     // We will sort each pair after deployment.
-    PoolKey keyEthDai;   // pool for ETH ↔ DAI
-    PoolKey keyDaiCow;   // pool for DAI ↔ COW
-    PoolKey keyCowUsdc;  // pool for COW ↔ USDC
-    PoolKey keyUsdcEth;  // pool for USDC ↔ ETH
+    PoolKey keyEthDai; // pool for ETH ↔ DAI
+    PoolKey keyDaiCow; // pool for DAI ↔ COW
+    PoolKey keyCowUsdc; // pool for COW ↔ USDC
+    PoolKey keyUsdcEth; // pool for USDC ↔ ETH
 
     PoolId pidEthDai;
     PoolId pidDaiCow;
@@ -95,22 +95,24 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
     PoolId pidUsdcEth;
 
     // ── Users ─────────────────────────────────────────────────────────────────
-    address eli   = makeAddr("eli");    // sells ETH  for DAI
-    address edith = makeAddr("edith");  // sells USDC for ETH
-    address lily  = makeAddr("lily");   // sells COW  for USDC
-    address chow  = makeAddr("chow");   // sells DAI  for COW
+    address eli = makeAddr("eli"); // sells ETH  for DAI
+    address edith = makeAddr("edith"); // sells USDC for ETH
+    address lily = makeAddr("lily"); // sells COW  for USDC
+    address chow = makeAddr("chow"); // sells DAI  for COW
 
     // ── Event topics ──────────────────────────────────────────────────────────
-    uint256 constant ORDER_CREATED_TOPIC =
-        uint256(keccak256("SwapOrderCreated(((address,address,uint24,int24,address),bytes32),bool,uint256,uint256,uint256)"));
+    uint256 constant ORDER_CREATED_TOPIC = uint256(
+        keccak256("SwapOrderCreated(((address,address,uint24,int24,address),bytes32),bool,uint256,uint256,uint256)")
+    );
     uint256 constant ORDER_SETTLED_TOPIC =
         uint256(keccak256("SwapOrderSettled(((address,address,uint24,int24,address),bytes32),bool,uint256,uint256)"));
-    uint256 constant ORDER_DEADLINE_TOPIC =
-        uint256(keccak256("SwapOrderDeadlineExceededSettled(address,((address,address,uint24,int24,address),bytes32),uint256,uint256)"));
+    uint256 constant ORDER_DEADLINE_TOPIC = uint256(
+        keccak256(
+            "SwapOrderDeadlineExceededSettled(address,((address,address,uint24,int24,address),bytes32),uint256,uint256)"
+        )
+    );
 
     // ─────────────────────────────────────────────────────────────────────────
-
-
 
     // ─────────────────────────────────────────────────────────────────────────
     function setUp() public {
@@ -118,33 +120,29 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         deployFreshManagerAndRouters();
 
         // 2. Deploy and label 4 tokens
-        tokenEth  = new MockERC20("Wrapped Ether",   "WETH",  18);
-        tokenDai  = new MockERC20("Dai Stablecoin",  "DAI",   18);
-        tokenUsdc = new MockERC20("USD Coin",         "USDC",  6);
-        tokenCow  = new MockERC20("CoW Protocol",    "COW",   18);
+        tokenEth = new MockERC20("Wrapped Ether", "WETH", 18);
+        tokenDai = new MockERC20("Dai Stablecoin", "DAI", 18);
+        tokenUsdc = new MockERC20("USD Coin", "USDC", 6);
+        tokenCow = new MockERC20("CoW Protocol", "COW", 18);
 
         // 3. Deploy hook at the encoded permission address
         uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
         address hookAddress = address(flags);
-        deployCodeTo(
-            "LeanSwap.sol",
-            abi.encode(manager, RSC_ADDR),
-            hookAddress
-        );
+        deployCodeTo("LeanSwap.sol", abi.encode(manager, RSC_ADDR), hookAddress);
         hook = LeanSwap(payable(hookAddress));
 
         // 4. Wrap as Currency
-        cETH  = Currency.wrap(address(tokenEth));
-        cDAI  = Currency.wrap(address(tokenDai));
+        cETH = Currency.wrap(address(tokenEth));
+        cDAI = Currency.wrap(address(tokenDai));
         cUSDC = Currency.wrap(address(tokenUsdc));
-        cCOW  = Currency.wrap(address(tokenCow));
+        cCOW = Currency.wrap(address(tokenCow));
 
         // 5. Create sorted pool keys (currency0 must be the lower address)
         //    and init each pool + add liquidity
-        (keyEthDai,  pidEthDai)  = _initPool(cETH,  cDAI,  hook, 0);
-        (keyDaiCow,  pidDaiCow)  = _initPool(cDAI,  cCOW,  hook, 0);
-        (keyCowUsdc, pidCowUsdc) = _initPool(cCOW,  cUSDC, hook, 0);
-        (keyUsdcEth, pidUsdcEth) = _initPool(cUSDC, cETH,  hook, 0);
+        (keyEthDai, pidEthDai) = _initPool(cETH, cDAI, hook, 0);
+        (keyDaiCow, pidDaiCow) = _initPool(cDAI, cCOW, hook, 0);
+        (keyCowUsdc, pidCowUsdc) = _initPool(cCOW, cUSDC, hook, 0);
+        (keyUsdcEth, pidUsdcEth) = _initPool(cUSDC, cETH, hook, 0);
 
         // 6. Deploy reactive contract (in VM mode — no real subscriptions)
         reactive = new LeanSwapReactive(
@@ -161,10 +159,10 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
 
         // 7. Mint tokens and approve for each user
         uint256 MINT = 100_000 ether;
-        _setupUser(eli,   MINT);
+        _setupUser(eli, MINT);
         _setupUser(edith, MINT);
-        _setupUser(lily,  MINT);
-        _setupUser(chow,  MINT);
+        _setupUser(lily, MINT);
+        _setupUser(chow, MINT);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -181,11 +179,7 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         (Currency c0, Currency c1) = Currency.unwrap(a) < Currency.unwrap(b) ? (a, b) : (b, a);
 
         poolKey_ = PoolKey({
-            currency0:   c0,
-            currency1:   c1,
-            fee:         FEE,
-            tickSpacing: TICK_SPACING,
-            hooks:       IHooks(address(_hook))
+            currency0: c0, currency1: c1, fee: FEE, tickSpacing: TICK_SPACING, hooks: IHooks(address(_hook))
         });
         poolId_ = poolKey_.toId();
 
@@ -201,32 +195,27 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
 
         modifyLiquidityRouter.modifyLiquidity(
             poolKey_,
-            ModifyLiquidityParams({
-                tickLower:      -120,
-                tickUpper:       120,
-                liquidityDelta:  50_000 ether,
-                salt:            bytes32(0)
-            }),
+            ModifyLiquidityParams({tickLower: -120, tickUpper: 120, liquidityDelta: 50_000 ether, salt: bytes32(0)}),
             new bytes(0)
         );
     }
 
     /// @dev Mint all 4 tokens to a user and approve the swap router + hook.
     function _setupUser(address user, uint256 amount) internal {
-        tokenEth.mint(user,  amount);
-        tokenDai.mint(user,  amount);
+        tokenEth.mint(user, amount);
+        tokenDai.mint(user, amount);
         tokenUsdc.mint(user, amount);
-        tokenCow.mint(user,  amount);
+        tokenCow.mint(user, amount);
 
         vm.startPrank(user);
-        tokenEth.approve(address(swapRouter),  type(uint256).max);
-        tokenDai.approve(address(swapRouter),  type(uint256).max);
+        tokenEth.approve(address(swapRouter), type(uint256).max);
+        tokenDai.approve(address(swapRouter), type(uint256).max);
         tokenUsdc.approve(address(swapRouter), type(uint256).max);
-        tokenCow.approve(address(swapRouter),  type(uint256).max);
-        tokenEth.approve(address(hook),  type(uint256).max);
-        tokenDai.approve(address(hook),  type(uint256).max);
+        tokenCow.approve(address(swapRouter), type(uint256).max);
+        tokenEth.approve(address(hook), type(uint256).max);
+        tokenDai.approve(address(hook), type(uint256).max);
         tokenUsdc.approve(address(hook), type(uint256).max);
-        tokenCow.approve(address(hook),  type(uint256).max);
+        tokenCow.approve(address(hook), type(uint256).max);
         vm.stopPrank();
     }
 
@@ -237,20 +226,17 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
     }
 
     /// @dev Place a CoW order and return the derived orderId.
-    function _placeOrder(
-        address user,
-        PoolKey memory poolKey_,
-        bool isZeroForOne,
-        uint256 amountIn,
-        uint256 deadline
-    ) internal returns (uint256 orderId) {
+    function _placeOrder(address user, PoolKey memory poolKey_, bool isZeroForOne, uint256 amountIn, uint256 deadline)
+        internal
+        returns (uint256 orderId)
+    {
         bytes memory hookData = LeanSwapLibrary.encodeHookData(deadline, true, user);
         vm.prank(user);
         swapRouter.swap(
             poolKey_,
             SwapParams({
-                zeroForOne:        isZeroForOne,
-                amountSpecified:   -int256(amountIn),
+                zeroForOne: isZeroForOne,
+                amountSpecified: -int256(amountIn),
                 sqrtPriceLimitX96: isZeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
             }),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
@@ -277,7 +263,16 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         return i;
     }
 
-    function _getOrderId(PoolId pid, bool zeroForOne, uint256 index, address /*owner*/) internal view returns (uint256) {
+    function _getOrderId(
+        PoolId pid,
+        bool zeroForOne,
+        uint256 index,
+        address /*owner*/
+    )
+        internal
+        view
+        returns (uint256)
+    {
         (address owner_,,,, uint64 dl,, uint256 amtIn, uint256 amtOut, uint256 nonce_,) =
             hook.pendingOrders(pid, zeroForOne, index);
         return uint256(keccak256(abi.encode(pid, zeroForOne, dl, amtIn, amtOut, owner_, nonce_)));
@@ -292,25 +287,21 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         uint256 amountIn
     ) internal view returns (IReactive.LogRecord memory) {
         ReactiveLibrary.OrderMetadata memory meta = ReactiveLibrary.OrderMetadata({
-            poolKey:    poolKey_,
-            zeroForOne: zeroForOne,
-            deadline:   deadline,
-            orderId:    orderId,
-            amountIn:   amountIn
+            poolKey: poolKey_, zeroForOne: zeroForOne, deadline: deadline, orderId: orderId, amountIn: amountIn
         });
         return IReactive.LogRecord({
-            chain_id:     block.chainid,
-            _contract:    address(hook),
-            topic_0:      ORDER_CREATED_TOPIC,
-            topic_1:      0,
-            topic_2:      0,
-            topic_3:      0,
-            data:         abi.encode(meta),
+            chain_id: block.chainid,
+            _contract: address(hook),
+            topic_0: ORDER_CREATED_TOPIC,
+            topic_1: 0,
+            topic_2: 0,
+            topic_3: 0,
+            data: abi.encode(meta),
             block_number: block.number,
-            op_code:      0,
-            block_hash:   0,
-            tx_hash:      0,
-            log_index:    0
+            op_code: 0,
+            block_hash: 0,
+            tx_hash: 0,
+            log_index: 0
         });
     }
 
@@ -345,20 +336,20 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         uint256 deadline = block.timestamp + 2 hours;
 
         // ── Determine correct zeroForOne for each user ────────────────────────
-        bool eliZfO   = _zeroForOne(keyEthDai,  address(tokenEth));   // Eli sells ETH
-        bool chowZfo  = _zeroForOne(keyDaiCow,  address(tokenDai));   // Chow sells DAI
-        bool lilyZfo  = _zeroForOne(keyCowUsdc, address(tokenCow));   // Lily sells COW
-        bool edithZfo = _zeroForOne(keyUsdcEth, address(tokenUsdc));  // Edith sells USDC
+        bool eliZfO = _zeroForOne(keyEthDai, address(tokenEth)); // Eli sells ETH
+        bool chowZfo = _zeroForOne(keyDaiCow, address(tokenDai)); // Chow sells DAI
+        bool lilyZfo = _zeroForOne(keyCowUsdc, address(tokenCow)); // Lily sells COW
+        bool edithZfo = _zeroForOne(keyUsdcEth, address(tokenUsdc)); // Edith sells USDC
 
         // ── Place orders ───────────────────────────────────────────────────────
-        uint256 eliOrderId   = _placeOrder(eli,   keyEthDai,  eliZfO,   amountIn, deadline);
-        uint256 chowOrderId  = _placeOrder(chow,  keyDaiCow,  chowZfo,  amountIn, deadline);
-        uint256 lilyOrderId  = _placeOrder(lily,  keyCowUsdc, lilyZfo,  amountIn, deadline);
+        uint256 eliOrderId = _placeOrder(eli, keyEthDai, eliZfO, amountIn, deadline);
+        uint256 chowOrderId = _placeOrder(chow, keyDaiCow, chowZfo, amountIn, deadline);
+        uint256 lilyOrderId = _placeOrder(lily, keyCowUsdc, lilyZfo, amountIn, deadline);
         uint256 edithOrderId = _placeOrder(edith, keyUsdcEth, edithZfo, amountIn, deadline);
 
         // ── Snapshot balances before settlement ───────────────────────────────
-        uint256 eliDaiBefore   = tokenDai.balanceOf(eli);
-        uint256 chowCowBefore  = tokenCow.balanceOf(chow);
+        uint256 eliDaiBefore = tokenDai.balanceOf(eli);
+        uint256 chowCowBefore = tokenCow.balanceOf(chow);
         uint256 lilyUsdcBefore = tokenUsdc.balanceOf(lily);
         uint256 edithEthBefore = tokenEth.balanceOf(edith);
 
@@ -377,37 +368,33 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         keys[2] = keyCowUsdc;
         keys[3] = keyUsdcEth;
 
-        bytes memory innerData = abi.encode(
-            ReactiveLibrary.CallbackType.SETTLE_COMPLEX_ORDER,
-            orderIds,
-            keys
-        );
+        bytes memory innerData = abi.encode(ReactiveLibrary.CallbackType.SETTLE_COMPLEX_ORDER, orderIds, keys);
 
         // ── Trigger settlement ─────────────────────────────────────────────────
         vm.prank(RSC_ADDR);
         hook.callback(innerData);
 
         // ── Verify each user received the correct token ────────────────────────
-        assertGt(tokenDai.balanceOf(eli),   eliDaiBefore,   "Eli should receive DAI");
-        assertGt(tokenCow.balanceOf(chow),  chowCowBefore,  "Chow should receive COW");
+        assertGt(tokenDai.balanceOf(eli), eliDaiBefore, "Eli should receive DAI");
+        assertGt(tokenCow.balanceOf(chow), chowCowBefore, "Chow should receive COW");
         assertGt(tokenUsdc.balanceOf(lily), lilyUsdcBefore, "Lily should receive USDC");
         assertGt(tokenEth.balanceOf(edith), edithEthBefore, "Edith should receive ETH");
 
         // ── Orders should be cleared from all batch aggregators ────────────────
-        assertEq(hook.batchPendingOrdersIn(pidEthDai,  eliZfO),   0, "ETH/DAI batch cleared");
-        assertEq(hook.batchPendingOrdersIn(pidDaiCow,  chowZfo),  0, "DAI/COW batch cleared");
-        assertEq(hook.batchPendingOrdersIn(pidCowUsdc, lilyZfo),  0, "COW/USDC batch cleared");
+        assertEq(hook.batchPendingOrdersIn(pidEthDai, eliZfO), 0, "ETH/DAI batch cleared");
+        assertEq(hook.batchPendingOrdersIn(pidDaiCow, chowZfo), 0, "DAI/COW batch cleared");
+        assertEq(hook.batchPendingOrdersIn(pidCowUsdc, lilyZfo), 0, "COW/USDC batch cleared");
         assertEq(hook.batchPendingOrdersIn(pidUsdcEth, edithZfo), 0, "USDC/ETH batch cleared");
 
         // ── Orders should be marked as fulfilled in storage ────────────────────
-        (, , bool eliFulfilled,,,,,,,) = hook.orders(eliOrderId);
-        (, , bool chowFulfilled,,,,,,,) = hook.orders(chowOrderId);
-        (, , bool lilyFulfilled,,,,,,,) = hook.orders(lilyOrderId);
-        (, , bool edithFulfilled,,,,,,,) = hook.orders(edithOrderId);
+        (,, bool eliFulfilled,,,,,,,) = hook.orders(eliOrderId);
+        (,, bool chowFulfilled,,,,,,,) = hook.orders(chowOrderId);
+        (,, bool lilyFulfilled,,,,,,,) = hook.orders(lilyOrderId);
+        (,, bool edithFulfilled,,,,,,,) = hook.orders(edithOrderId);
 
-        assertTrue(eliFulfilled,   "Eli order fulfilled");
-        assertTrue(chowFulfilled,  "Chow order fulfilled");
-        assertTrue(lilyFulfilled,  "Lily order fulfilled");
+        assertTrue(eliFulfilled, "Eli order fulfilled");
+        assertTrue(chowFulfilled, "Chow order fulfilled");
+        assertTrue(lilyFulfilled, "Lily order fulfilled");
         assertTrue(edithFulfilled, "Edith order fulfilled");
     }
 
@@ -422,27 +409,27 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         uint256 amountIn = 1 ether;
         uint256 deadline = block.timestamp + 2 hours;
 
-        bool eliZfO   = _zeroForOne(keyEthDai,  address(tokenEth));
-        bool chowZfo  = _zeroForOne(keyDaiCow,  address(tokenDai));
-        bool lilyZfo  = _zeroForOne(keyCowUsdc, address(tokenCow));
+        bool eliZfO = _zeroForOne(keyEthDai, address(tokenEth));
+        bool chowZfo = _zeroForOne(keyDaiCow, address(tokenDai));
+        bool lilyZfo = _zeroForOne(keyCowUsdc, address(tokenCow));
         bool edithZfo = _zeroForOne(keyUsdcEth, address(tokenUsdc));
 
-        uint256 eliOrderId   = _placeOrder(eli,   keyEthDai,  eliZfO,   amountIn, deadline);
-        uint256 chowOrderId  = _placeOrder(chow,  keyDaiCow,  chowZfo,  amountIn, deadline);
-        uint256 lilyOrderId  = _placeOrder(lily,  keyCowUsdc, lilyZfo,  amountIn, deadline);
+        uint256 eliOrderId = _placeOrder(eli, keyEthDai, eliZfO, amountIn, deadline);
+        uint256 chowOrderId = _placeOrder(chow, keyDaiCow, chowZfo, amountIn, deadline);
+        uint256 lilyOrderId = _placeOrder(lily, keyCowUsdc, lilyZfo, amountIn, deadline);
         uint256 edithOrderId = _placeOrder(edith, keyUsdcEth, edithZfo, amountIn, deadline);
 
         // Feed first 3 orders — no cycle yet
         vm.startPrank(RSC_ADDR);
-        reactive.react(_buildOrderCreatedLog(keyEthDai,  eliZfO,   deadline, eliOrderId,   amountIn));
-        reactive.react(_buildOrderCreatedLog(keyDaiCow,  chowZfo,  deadline, chowOrderId,  amountIn));
-        reactive.react(_buildOrderCreatedLog(keyCowUsdc, lilyZfo,  deadline, lilyOrderId,  amountIn));
+        reactive.react(_buildOrderCreatedLog(keyEthDai, eliZfO, deadline, eliOrderId, amountIn));
+        reactive.react(_buildOrderCreatedLog(keyDaiCow, chowZfo, deadline, chowOrderId, amountIn));
+        reactive.react(_buildOrderCreatedLog(keyCowUsdc, lilyZfo, deadline, lilyOrderId, amountIn));
         vm.stopPrank();
 
         // All 3 ingested OK, none triggered a cycle callback yet
-        assertTrue(reactive.isActiveOrder(eliOrderId),   "Eli order active");
-        assertTrue(reactive.isActiveOrder(chowOrderId),  "Chow order active");
-        assertTrue(reactive.isActiveOrder(lilyOrderId),  "Lily order active");
+        assertTrue(reactive.isActiveOrder(eliOrderId), "Eli order active");
+        assertTrue(reactive.isActiveOrder(chowOrderId), "Chow order active");
+        assertTrue(reactive.isActiveOrder(lilyOrderId), "Lily order active");
 
         // Record logs for the 4th injection — this should close the cycle
         vm.recordLogs();
@@ -466,7 +453,7 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
 
         // Decode and verify the payload is a SETTLE_COMPLEX_ORDER
         bytes memory innerCalldata = _stripSelector(callbackPayload);
-        bytes memory innerData     = abi.decode(innerCalldata, (bytes));
+        bytes memory innerData = abi.decode(innerCalldata, (bytes));
 
         (ReactiveLibrary.CallbackType cType,,) =
             abi.decode(innerData, (ReactiveLibrary.CallbackType, uint256[], PoolKey[]));
@@ -486,21 +473,21 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         uint256 amountIn = 1 ether;
         uint256 deadline = block.timestamp + 2 hours;
 
-        bool eliZfO   = _zeroForOne(keyEthDai,  address(tokenEth));
-        bool chowZfo  = _zeroForOne(keyDaiCow,  address(tokenDai));
-        bool lilyZfo  = _zeroForOne(keyCowUsdc, address(tokenCow));
+        bool eliZfO = _zeroForOne(keyEthDai, address(tokenEth));
+        bool chowZfo = _zeroForOne(keyDaiCow, address(tokenDai));
+        bool lilyZfo = _zeroForOne(keyCowUsdc, address(tokenCow));
         bool edithZfo = _zeroForOne(keyUsdcEth, address(tokenUsdc));
 
-        uint256 eliOrderId   = _placeOrder(eli,   keyEthDai,  eliZfO,   amountIn, deadline);
-        uint256 chowOrderId  = _placeOrder(chow,  keyDaiCow,  chowZfo,  amountIn, deadline);
-        uint256 lilyOrderId  = _placeOrder(lily,  keyCowUsdc, lilyZfo,  amountIn, deadline);
+        uint256 eliOrderId = _placeOrder(eli, keyEthDai, eliZfO, amountIn, deadline);
+        uint256 chowOrderId = _placeOrder(chow, keyDaiCow, chowZfo, amountIn, deadline);
+        uint256 lilyOrderId = _placeOrder(lily, keyCowUsdc, lilyZfo, amountIn, deadline);
         uint256 edithOrderId = _placeOrder(edith, keyUsdcEth, edithZfo, amountIn, deadline);
 
         // Feed orders 1-3 to reactive
         vm.startPrank(RSC_ADDR);
-        reactive.react(_buildOrderCreatedLog(keyEthDai,  eliZfO,   deadline, eliOrderId,   amountIn));
-        reactive.react(_buildOrderCreatedLog(keyDaiCow,  chowZfo,  deadline, chowOrderId,  amountIn));
-        reactive.react(_buildOrderCreatedLog(keyCowUsdc, lilyZfo,  deadline, lilyOrderId,  amountIn));
+        reactive.react(_buildOrderCreatedLog(keyEthDai, eliZfO, deadline, eliOrderId, amountIn));
+        reactive.react(_buildOrderCreatedLog(keyDaiCow, chowZfo, deadline, chowOrderId, amountIn));
+        reactive.react(_buildOrderCreatedLog(keyCowUsdc, lilyZfo, deadline, lilyOrderId, amountIn));
         vm.stopPrank();
 
         // Capture Callback event from 4th order injection
@@ -526,8 +513,8 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         bytes memory innerData = abi.decode(innerCalldata, (bytes));
 
         // Snapshot balances
-        uint256 eliDaiBefore   = tokenDai.balanceOf(eli);
-        uint256 chowCowBefore  = tokenCow.balanceOf(chow);
+        uint256 eliDaiBefore = tokenDai.balanceOf(eli);
+        uint256 chowCowBefore = tokenCow.balanceOf(chow);
         uint256 lilyUsdcBefore = tokenUsdc.balanceOf(lily);
         uint256 edithEthBefore = tokenEth.balanceOf(edith);
 
@@ -536,8 +523,8 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         hook.callback(innerData);
 
         // Verify settlements
-        assertGt(tokenDai.balanceOf(eli),   eliDaiBefore,   "Eli received DAI");
-        assertGt(tokenCow.balanceOf(chow),  chowCowBefore,  "Chow received COW");
+        assertGt(tokenDai.balanceOf(eli), eliDaiBefore, "Eli received DAI");
+        assertGt(tokenCow.balanceOf(chow), chowCowBefore, "Chow received COW");
         assertGt(tokenUsdc.balanceOf(lily), lilyUsdcBefore, "Lily received USDC");
         assertGt(tokenEth.balanceOf(edith), edithEthBefore, "Edith received ETH");
     }
@@ -550,19 +537,19 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         uint256 amountIn = 1 ether;
         uint256 deadline = block.timestamp + 2 hours;
 
-        bool eliZfO  = _zeroForOne(keyEthDai, address(tokenEth));
-        bool chowZfo = _zeroForOne(keyDaiCow,  address(tokenDai));
+        bool eliZfO = _zeroForOne(keyEthDai, address(tokenEth));
+        bool chowZfo = _zeroForOne(keyDaiCow, address(tokenDai));
         bool lilyZfo = _zeroForOne(keyCowUsdc, address(tokenCow));
 
-        uint256 eliOrderId  = _placeOrder(eli,  keyEthDai,  eliZfO,  amountIn, deadline);
-        uint256 chowOrderId = _placeOrder(chow, keyDaiCow,  chowZfo, amountIn, deadline);
+        uint256 eliOrderId = _placeOrder(eli, keyEthDai, eliZfO, amountIn, deadline);
+        uint256 chowOrderId = _placeOrder(chow, keyDaiCow, chowZfo, amountIn, deadline);
         uint256 lilyOrderId = _placeOrder(lily, keyCowUsdc, lilyZfo, amountIn, deadline);
 
         // No Callback event should be emitted — only 3 legs of the 4-leg cycle
         vm.recordLogs();
         vm.startPrank(RSC_ADDR);
-        reactive.react(_buildOrderCreatedLog(keyEthDai,  eliZfO,  deadline, eliOrderId,  amountIn));
-        reactive.react(_buildOrderCreatedLog(keyDaiCow,  chowZfo, deadline, chowOrderId, amountIn));
+        reactive.react(_buildOrderCreatedLog(keyEthDai, eliZfO, deadline, eliOrderId, amountIn));
+        reactive.react(_buildOrderCreatedLog(keyDaiCow, chowZfo, deadline, chowOrderId, amountIn));
         reactive.react(_buildOrderCreatedLog(keyCowUsdc, lilyZfo, deadline, lilyOrderId, amountIn));
         vm.stopPrank();
 
@@ -585,8 +572,8 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         assertFalse(foundComplexCallback, "No complex settle should be triggered with only 3 legs");
 
         // Orders remain pending
-        assertGt(hook.batchPendingOrdersIn(pidEthDai,  eliZfO),  0, "ETH/DAI batch not empty");
-        assertGt(hook.batchPendingOrdersIn(pidDaiCow,  chowZfo), 0, "DAI/COW batch not empty");
+        assertGt(hook.batchPendingOrdersIn(pidEthDai, eliZfO), 0, "ETH/DAI batch not empty");
+        assertGt(hook.batchPendingOrdersIn(pidDaiCow, chowZfo), 0, "DAI/COW batch not empty");
         assertGt(hook.batchPendingOrdersIn(pidCowUsdc, lilyZfo), 0, "COW/USDC batch not empty");
     }
 
@@ -599,20 +586,20 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         // without invoking the AMM, the amounts must strictly adhere to the AMM's fee decay (~0.3%).
         // We use a decreasing sequence so that each order provides slightly more than the previous
         // order's simulated `amountOut`, preventing any AMM swaps.
-        uint256 amountEli   = 1 ether;
-        uint256 amountChow  = 0.998 ether;
-        uint256 amountLily  = 0.996 ether;
+        uint256 amountEli = 1 ether;
+        uint256 amountChow = 0.998 ether;
+        uint256 amountLily = 0.996 ether;
         uint256 amountEdith = 0.994 ether;
         uint256 deadline = block.timestamp + 2 hours;
 
-        bool eliZfO   = _zeroForOne(keyEthDai,  address(tokenEth));
-        bool chowZfo  = _zeroForOne(keyDaiCow,  address(tokenDai));
-        bool lilyZfo  = _zeroForOne(keyCowUsdc, address(tokenCow));
+        bool eliZfO = _zeroForOne(keyEthDai, address(tokenEth));
+        bool chowZfo = _zeroForOne(keyDaiCow, address(tokenDai));
+        bool lilyZfo = _zeroForOne(keyCowUsdc, address(tokenCow));
         bool edithZfo = _zeroForOne(keyUsdcEth, address(tokenUsdc));
 
-        uint256 eliOrderId   = _placeOrder(eli,   keyEthDai,  eliZfO,   amountEli,   deadline);
-        uint256 chowOrderId  = _placeOrder(chow,  keyDaiCow,  chowZfo,  amountChow,  deadline);
-        uint256 lilyOrderId  = _placeOrder(lily,  keyCowUsdc, lilyZfo,  amountLily,  deadline);
+        uint256 eliOrderId = _placeOrder(eli, keyEthDai, eliZfO, amountEli, deadline);
+        uint256 chowOrderId = _placeOrder(chow, keyDaiCow, chowZfo, amountChow, deadline);
+        uint256 lilyOrderId = _placeOrder(lily, keyCowUsdc, lilyZfo, amountLily, deadline);
         uint256 edithOrderId = _placeOrder(edith, keyUsdcEth, edithZfo, amountEdith, deadline);
 
         uint256[] memory orderIds = new uint256[](4);
@@ -627,23 +614,19 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         keys[2] = keyCowUsdc;
         keys[3] = keyUsdcEth;
 
-        uint256 eliDaiBefore   = tokenDai.balanceOf(eli);
-        uint256 chowCowBefore  = tokenCow.balanceOf(chow);
+        uint256 eliDaiBefore = tokenDai.balanceOf(eli);
+        uint256 chowCowBefore = tokenCow.balanceOf(chow);
         uint256 lilyUsdcBefore = tokenUsdc.balanceOf(lily);
         uint256 edithEthBefore = tokenEth.balanceOf(edith);
 
-        bytes memory innerData = abi.encode(
-            ReactiveLibrary.CallbackType.SETTLE_COMPLEX_ORDER,
-            orderIds,
-            keys
-        );
+        bytes memory innerData = abi.encode(ReactiveLibrary.CallbackType.SETTLE_COMPLEX_ORDER, orderIds, keys);
 
         vm.prank(RSC_ADDR);
         hook.callback(innerData);
 
         // All users should receive their output token (possibly via AMM for the deficit)
-        assertGt(tokenDai.balanceOf(eli),   eliDaiBefore,   "Eli received DAI (imbalanced)");
-        assertGt(tokenCow.balanceOf(chow),  chowCowBefore,  "Chow received COW (imbalanced)");
+        assertGt(tokenDai.balanceOf(eli), eliDaiBefore, "Eli received DAI (imbalanced)");
+        assertGt(tokenCow.balanceOf(chow), chowCowBefore, "Chow received COW (imbalanced)");
         assertGt(tokenUsdc.balanceOf(lily), lilyUsdcBefore, "Lily received USDC (imbalanced)");
         assertGt(tokenEth.balanceOf(edith), edithEthBefore, "Edith received ETH (imbalanced)");
     }
@@ -654,13 +637,9 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
     // =========================================================================
     function test_settleComplex_mismatchedArrays_reverts() public {
         uint256[] memory orderIds = new uint256[](2);
-        PoolKey[] memory keys     = new PoolKey[](3); // mismatch!
+        PoolKey[] memory keys = new PoolKey[](3); // mismatch!
 
-        bytes memory innerData = abi.encode(
-            ReactiveLibrary.CallbackType.SETTLE_COMPLEX_ORDER,
-            orderIds,
-            keys
-        );
+        bytes memory innerData = abi.encode(ReactiveLibrary.CallbackType.SETTLE_COMPLEX_ORDER, orderIds, keys);
 
         vm.prank(RSC_ADDR);
         vm.expectRevert(LeanSwap.ArrayLengthMismatch.selector);
@@ -676,14 +655,14 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         uint256 amountIn = 1 ether;
         uint256 deadline = block.timestamp + 2 hours;
 
-        bool eliZfO   = _zeroForOne(keyEthDai,  address(tokenEth));
-        bool chowZfo  = _zeroForOne(keyDaiCow,  address(tokenDai));
-        bool lilyZfo  = _zeroForOne(keyCowUsdc, address(tokenCow));
+        bool eliZfO = _zeroForOne(keyEthDai, address(tokenEth));
+        bool chowZfo = _zeroForOne(keyDaiCow, address(tokenDai));
+        bool lilyZfo = _zeroForOne(keyCowUsdc, address(tokenCow));
         bool edithZfo = _zeroForOne(keyUsdcEth, address(tokenUsdc));
 
-        uint256 eliOrderId   = _placeOrder(eli,   keyEthDai,  eliZfO,   amountIn, deadline);
-        uint256 chowOrderId  = _placeOrder(chow,  keyDaiCow,  chowZfo,  amountIn, deadline);
-        uint256 lilyOrderId  = _placeOrder(lily,  keyCowUsdc, lilyZfo,  amountIn, deadline);
+        uint256 eliOrderId = _placeOrder(eli, keyEthDai, eliZfO, amountIn, deadline);
+        uint256 chowOrderId = _placeOrder(chow, keyDaiCow, chowZfo, amountIn, deadline);
+        uint256 lilyOrderId = _placeOrder(lily, keyCowUsdc, lilyZfo, amountIn, deadline);
         uint256 edithOrderId = _placeOrder(edith, keyUsdcEth, edithZfo, amountIn, deadline);
 
         uint256[] memory orderIds = new uint256[](4);
@@ -698,11 +677,7 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         keys[2] = keyCowUsdc;
         keys[3] = keyUsdcEth;
 
-        bytes memory innerData = abi.encode(
-            ReactiveLibrary.CallbackType.SETTLE_COMPLEX_ORDER,
-            orderIds,
-            keys
-        );
+        bytes memory innerData = abi.encode(ReactiveLibrary.CallbackType.SETTLE_COMPLEX_ORDER, orderIds, keys);
 
         // First settlement — succeeds
         vm.prank(RSC_ADDR);
@@ -721,17 +696,13 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         // Create 11 dummy orderIds (> MAX_CYCLE_DEPTH = 10)
         uint256 n = 11;
         uint256[] memory orderIds = new uint256[](n);
-        PoolKey[] memory keys     = new PoolKey[](n);
+        PoolKey[] memory keys = new PoolKey[](n);
         for (uint256 i = 0; i < n; i++) {
             orderIds[i] = i + 1;
-            keys[i]     = keyEthDai;
+            keys[i] = keyEthDai;
         }
 
-        bytes memory innerData = abi.encode(
-            ReactiveLibrary.CallbackType.SETTLE_COMPLEX_ORDER,
-            orderIds,
-            keys
-        );
+        bytes memory innerData = abi.encode(ReactiveLibrary.CallbackType.SETTLE_COMPLEX_ORDER, orderIds, keys);
 
         vm.prank(RSC_ADDR);
         vm.expectRevert(LeanSwap.MaxCycleDepthExceeded.selector);

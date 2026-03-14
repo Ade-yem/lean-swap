@@ -67,16 +67,20 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
 
     // ── Event topics for the reactive contract subscription ───────────────────
     // These are keccak256 hashes of the event signatures from LeanSwap.sol
-    uint256 constant ORDER_CREATED_TOPIC =
-        uint256(keccak256("SwapOrderCreated(((address,address,uint24,int24,address),bytes32),bool,uint256,uint256,uint256)"));
+    uint256 constant ORDER_CREATED_TOPIC = uint256(
+        keccak256("SwapOrderCreated(((address,address,uint24,int24,address),bytes32),bool,uint256,uint256,uint256)")
+    );
     uint256 constant ORDER_SETTLED_TOPIC =
         uint256(keccak256("SwapOrderSettled(((address,address,uint24,int24,address),bytes32),bool,uint256,uint256)"));
-    uint256 constant ORDER_DEADLINE_TOPIC =
-        uint256(keccak256("SwapOrderDeadlineExceededSettled(address,((address,address,uint24,int24,address),bytes32),uint256,uint256)"));
+    uint256 constant ORDER_DEADLINE_TOPIC = uint256(
+        keccak256(
+            "SwapOrderDeadlineExceededSettled(address,((address,address,uint24,int24,address),bytes32),uint256,uint256)"
+        )
+    );
 
     // ── Users ──────────────────────────────────────────────────────────────────
     address alice = makeAddr("alice");
-    address bob   = makeAddr("bob");
+    address bob = makeAddr("bob");
 
     // ─────────────────────────────────────────────────────────────────────────
     function setUp() public {
@@ -87,11 +91,7 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
         // 2. Deploy LeanSwap hook at the address that encodes the hook permission flags
         uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
         address hookAddress = address(flags);
-        deployCodeTo(
-            "LeanSwap.sol",
-            abi.encode(manager, RSC_ADDR),
-            hookAddress
-        );
+        deployCodeTo("LeanSwap.sol", abi.encode(manager, RSC_ADDR), hookAddress);
         hook = LeanSwap(payable(hookAddress));
 
         // 3. Init pool and add liquidity
@@ -106,15 +106,15 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
         //    We pass RSC_ADDR as _service so the constructor payable cast succeeds.
         //    Since 0xfffFfF has no code in Forge, detectVm() → vm = true → no subscribe calls.
         reactive = new LeanSwapReactive(
-            RSC_ADDR,             // _service
-            block.chainid,        // _originChainId
-            block.chainid,        // _destinationChainId
-            address(hook),        // _contract (the LeanSwap hook)
-            ORDER_CREATED_TOPIC,  // _orderCreatedTopic0
-            ORDER_SETTLED_TOPIC,  // _orderSettledTopic0
+            RSC_ADDR, // _service
+            block.chainid, // _originChainId
+            block.chainid, // _destinationChainId
+            address(hook), // _contract (the LeanSwap hook)
+            ORDER_CREATED_TOPIC, // _orderCreatedTopic0
+            ORDER_SETTLED_TOPIC, // _orderSettledTopic0
             ORDER_DEADLINE_TOPIC, // _orderDeadlineTopic0
-            address(hook),        // _callback (where payloads are delivered)
-            1000                  // _minOrderAmount
+            address(hook), // _callback (where payloads are delivered)
+            1000 // _minOrderAmount
         );
 
         // 5. Mint and approve for users
@@ -163,7 +163,9 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
         // iterate until it reverts
         uint256 i;
         while (true) {
-            try hook.pendingOrders(poolId, zeroForOne, i) returns (address, bool, bool, bool, uint64, PoolId, uint256, uint256, uint256, uint256) {
+            try hook.pendingOrders(poolId, zeroForOne, i) returns (
+                address, bool, bool, bool, uint64, PoolId, uint256, uint256, uint256, uint256
+            ) {
                 i++;
             } catch {
                 break;
@@ -172,7 +174,15 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
         return i;
     }
 
-    function _getOrderId(bool zeroForOne, uint256 index, address /*owner*/) internal view returns (uint256) {
+    function _getOrderId(
+        bool zeroForOne,
+        uint256 index,
+        address /*owner*/
+    )
+        internal
+        view
+        returns (uint256)
+    {
         (address owner_,,,, uint64 dl,, uint256 amtIn, uint256 amtOut, uint256 nonce_,) =
             hook.pendingOrders(poolId, zeroForOne, index);
         return uint256(keccak256(abi.encode(poolId, zeroForOne, dl, amtIn, amtOut, owner_, nonce_)));
@@ -189,54 +199,46 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
         uint256 amountIn
     ) internal view returns (IReactive.LogRecord memory logRec) {
         ReactiveLibrary.OrderMetadata memory meta = ReactiveLibrary.OrderMetadata({
-            poolKey:    _key,
-            zeroForOne: zeroForOne,
-            deadline:   deadline,
-            orderId:    orderId,
-            amountIn:   amountIn
+            poolKey: _key, zeroForOne: zeroForOne, deadline: deadline, orderId: orderId, amountIn: amountIn
         });
         logRec = IReactive.LogRecord({
-            chain_id:     block.chainid,
-            _contract:    address(hook),
-            topic_0:      ORDER_CREATED_TOPIC,
-            topic_1:      0,
-            topic_2:      0,
-            topic_3:      0,
-            data:         abi.encode(meta),
+            chain_id: block.chainid,
+            _contract: address(hook),
+            topic_0: ORDER_CREATED_TOPIC,
+            topic_1: 0,
+            topic_2: 0,
+            topic_3: 0,
+            data: abi.encode(meta),
             block_number: block.number,
-            op_code:      0,
-            block_hash:   0,
-            tx_hash:      0,
-            log_index:    0
+            op_code: 0,
+            block_hash: 0,
+            tx_hash: 0,
+            log_index: 0
         });
     }
 
     /// @dev Build a synthetic SwapOrderSettled log record.
-    function _buildOrderSettledLog(
-        PoolKey memory _key,
-        bool zeroForOne,
-        uint256 amountOut,
-        uint256 orderId
-    ) internal view returns (IReactive.LogRecord memory logRec) {
+    function _buildOrderSettledLog(PoolKey memory _key, bool zeroForOne, uint256 amountOut, uint256 orderId)
+        internal
+        view
+        returns (IReactive.LogRecord memory logRec)
+    {
         ReactiveLibrary.SettledOrderMetadata memory meta = ReactiveLibrary.SettledOrderMetadata({
-            poolKey:    _key,
-            zeroForOne: zeroForOne,
-            amountOut:  amountOut,
-            orderId:    orderId
+            poolKey: _key, zeroForOne: zeroForOne, amountOut: amountOut, orderId: orderId
         });
         logRec = IReactive.LogRecord({
-            chain_id:     block.chainid,
-            _contract:    address(hook),
-            topic_0:      ORDER_SETTLED_TOPIC,
-            topic_1:      0,
-            topic_2:      0,
-            topic_3:      0,
-            data:         abi.encode(meta),
+            chain_id: block.chainid,
+            _contract: address(hook),
+            topic_0: ORDER_SETTLED_TOPIC,
+            topic_1: 0,
+            topic_2: 0,
+            topic_3: 0,
+            data: abi.encode(meta),
             block_number: block.number,
-            op_code:      0,
-            block_hash:   0,
-            tx_hash:      0,
-            log_index:    0
+            op_code: 0,
+            block_hash: 0,
+            tx_hash: 0,
+            log_index: 0
         });
     }
 
@@ -246,25 +248,21 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
         view
         returns (IReactive.LogRecord memory logRec)
     {
-        ReactiveLibrary.DeadlineSettledData memory meta = ReactiveLibrary.DeadlineSettledData({
-            owner:   owner,
-            poolKey: key,
-            amount:  amount,
-            orderId: orderId
-        });
+        ReactiveLibrary.DeadlineSettledData memory meta =
+            ReactiveLibrary.DeadlineSettledData({owner: owner, poolKey: key, amount: amount, orderId: orderId});
         logRec = IReactive.LogRecord({
-            chain_id:     block.chainid,
-            _contract:    address(hook),
-            topic_0:      ORDER_DEADLINE_TOPIC,
-            topic_1:      0,
-            topic_2:      0,
-            topic_3:      0,
-            data:         abi.encode(meta),
+            chain_id: block.chainid,
+            _contract: address(hook),
+            topic_0: ORDER_DEADLINE_TOPIC,
+            topic_1: 0,
+            topic_2: 0,
+            topic_3: 0,
+            data: abi.encode(meta),
             block_number: block.number,
-            op_code:      0,
-            block_hash:   0,
-            tx_hash:      0,
-            log_index:    0
+            op_code: 0,
+            block_hash: 0,
+            tx_hash: 0,
+            log_index: 0
         });
     }
 
@@ -279,8 +277,7 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
         uint256 orderId = _placeOrder(alice, true, amountIn, deadline);
 
         // Feed the SwapOrderCreated log to the reactive contract (as if the RSC is processing it)
-        IReactive.LogRecord memory logRec =
-            _buildOrderCreatedLog(key, true, deadline, orderId, amountIn);
+        IReactive.LogRecord memory logRec = _buildOrderCreatedLog(key, true, deadline, orderId, amountIn);
 
         vm.prank(RSC_ADDR);
         reactive.react(logRec);
@@ -304,23 +301,23 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
         uint256 deadline = block.timestamp + 1 hours;
 
         // Alice: token0 → token1
-        uint256 aliceOrderId = _placeOrder(alice, true,  amountIn, deadline);
+        uint256 aliceOrderId = _placeOrder(alice, true, amountIn, deadline);
         // Bob:   token1 → token0 (matching)
-        uint256 bobOrderId   = _placeOrder(bob,   false, amountIn, deadline);
+        uint256 bobOrderId = _placeOrder(bob, false, amountIn, deadline);
 
         // Feed both order-created events to the reactive contract
         vm.startPrank(RSC_ADDR);
-        reactive.react(_buildOrderCreatedLog(key, true,  deadline, aliceOrderId, amountIn));
-        reactive.react(_buildOrderCreatedLog(key, false, deadline, bobOrderId,   amountIn));
+        reactive.react(_buildOrderCreatedLog(key, true, deadline, aliceOrderId, amountIn));
+        reactive.react(_buildOrderCreatedLog(key, false, deadline, bobOrderId, amountIn));
         vm.stopPrank();
 
         // Both orders should be active in the reactive graph
         assertTrue(reactive.isActiveOrder(aliceOrderId), "Alice order active");
-        assertTrue(reactive.isActiveOrder(bobOrderId),   "Bob order active");
+        assertTrue(reactive.isActiveOrder(bobOrderId), "Bob order active");
 
         // Snapshot balances before settlement
         uint256 aliceBal1Before = currency1.balanceOf(alice);
-        uint256 bobBal0Before   = currency0.balanceOf(bob);
+        uint256 bobBal0Before = currency0.balanceOf(bob);
 
         // Now simulate what the Reactive Network would do: call LeanSwap.callback()
         // with a SETTLE_ORDER payload for this pool key (from the RSC address).
@@ -329,10 +326,10 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
 
         // Alice should have received token1, Bob should have received token0
         assertGt(currency1.balanceOf(alice), aliceBal1Before, "Alice should receive token1");
-        assertGt(currency0.balanceOf(bob),   bobBal0Before,   "Bob should receive token0");
+        assertGt(currency0.balanceOf(bob), bobBal0Before, "Bob should receive token0");
 
         // Both batch sides must be empty after settlement
-        assertEq(hook.batchPendingOrdersIn(poolId, true),  0, "token0 batch cleared");
+        assertEq(hook.batchPendingOrdersIn(poolId, true), 0, "token0 batch cleared");
         assertEq(hook.batchPendingOrdersIn(poolId, false), 0, "token1 batch cleared");
     }
 
@@ -390,7 +387,10 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
         // This avoids the 2-party-cycle risk that a created-log with zeroForOne=false would cause.
         uint256 dummySentinelId = uint256(keccak256("deadline-trigger-sentinel"));
         IReactive.LogRecord memory triggerLog = _buildOrderSettledLog(
-            key, true, 0, dummySentinelId   // zero amountOut; orderId not present in graph
+            key,
+            true,
+            0,
+            dummySentinelId // zero amountOut; orderId not present in graph
         );
 
         vm.prank(RSC_ADDR);
@@ -434,8 +434,7 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
         uint256 deadline = block.timestamp + 1 hours;
 
         uint256 orderId = _placeOrder(alice, true, amountIn, deadline);
-        IReactive.LogRecord memory logRec =
-            _buildOrderCreatedLog(key, true, deadline, orderId, amountIn);
+        IReactive.LogRecord memory logRec = _buildOrderCreatedLog(key, true, deadline, orderId, amountIn);
 
         vm.startPrank(RSC_ADDR);
         reactive.react(logRec);
@@ -465,11 +464,10 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
     // =========================================================================
     function test_reactive_drops_dust_orders() public {
         uint256 dustAmount = 500; // below minOrderAmount = 1000
-        uint256 deadline   = block.timestamp + 1 hours;
+        uint256 deadline = block.timestamp + 1 hours;
         uint256 dummyOrderId = uint256(keccak256("dust-order"));
 
-        IReactive.LogRecord memory logRec =
-            _buildOrderCreatedLog(key, true, deadline, dummyOrderId, dustAmount);
+        IReactive.LogRecord memory logRec = _buildOrderCreatedLog(key, true, deadline, dummyOrderId, dustAmount);
 
         vm.prank(RSC_ADDR);
         reactive.react(logRec);
@@ -509,9 +507,9 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
         uint256 deadline = block.timestamp + 1 hours;
 
         // Alice: token0 → token1
-        uint256 aliceOrderId = _placeOrder(alice, true,  amountIn, deadline);
+        uint256 aliceOrderId = _placeOrder(alice, true, amountIn, deadline);
         // Bob:   token1 → token0
-        uint256 bobOrderId   = _placeOrder(bob,   false, amountIn, deadline);
+        uint256 bobOrderId = _placeOrder(bob, false, amountIn, deadline);
 
         // Build SETTLE_COMPLEX_ORDER payload manually
         uint256[] memory orderIds = new uint256[](2);
@@ -523,7 +521,7 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
         keys[1] = key;
 
         uint256 aliceBal1Before = currency1.balanceOf(alice);
-        uint256 bobBal0Before   = currency0.balanceOf(bob);
+        uint256 bobBal0Before = currency0.balanceOf(bob);
 
         // LeanSwap's callback() strips the selector from the payload
         bytes memory innerData = abi.encode(ReactiveLibrary.CallbackType.SETTLE_COMPLEX_ORDER, orderIds, keys);
@@ -532,7 +530,7 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
         hook.callback(innerData);
 
         assertGt(currency1.balanceOf(alice), aliceBal1Before, "Alice got token1 via complex settle");
-        assertGt(currency0.balanceOf(bob),   bobBal0Before,   "Bob got token0 via complex settle");
+        assertGt(currency0.balanceOf(bob), bobBal0Before, "Bob got token0 via complex settle");
     }
 
     // ─────────────────────────────────────────────────────────────────────────

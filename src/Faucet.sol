@@ -14,21 +14,15 @@ contract Faucet {
     uint256 public constant CLAIM_INTERVAL = 24 hours;
 
     // Disbursement amounts
-    uint256 public constant tUSDC_AMOUNT = 100 * 10**6;    // USDC has 6 decimals usually, let's assume 18 for simplicity unless specified
-    uint256 public constant tDAI_AMOUNT = 100 * 10**18;
-    uint256 public constant tLEAN_AMOUNT = 100 * 10**18;
-    uint256 public constant tETH_AMOUNT = 3 * 10**18;
-    uint256 public constant tCOW_AMOUNT = 100 * 10**18;
+    uint256 public constant tUSDC_AMOUNT = 100 * 10 ** 6; // USDC has 6 decimals usually, let's assume 18 for simplicity unless specified
+    uint256 public constant tDAI_AMOUNT = 100 * 10 ** 18;
+    uint256 public constant tLEAN_AMOUNT = 100 * 10 ** 18;
+    uint256 public constant tETH_AMOUNT = 3 * 10 ** 18;
+    uint256 public constant tCOW_AMOUNT = 100 * 10 ** 18;
 
     uint256 public constant INITIAL_MINT_AMOUNT = 100_000;
 
-    constructor(
-        address _tUSDC,
-        address _tDAI,
-        address _tLEAN,
-        address _tETH,
-        address _tCOW
-    ) {
+    constructor(address _tUSDC, address _tDAI, address _tLEAN, address _tETH, address _tCOW) {
         tUSDC = TestnetToken(_tUSDC);
         tDAI = TestnetToken(_tDAI);
         tLEAN = TestnetToken(_tLEAN);
@@ -38,11 +32,11 @@ contract Faucet {
 
     // Called once the faucet is granted minter rights on the tokens
     function initializeMints() external {
-        _mintIfNeeded(tUSDC, INITIAL_MINT_AMOUNT * 10**6); // Check proper decimals 
-        _mintIfNeeded(tDAI, INITIAL_MINT_AMOUNT * 10**18);
-        _mintIfNeeded(tLEAN, INITIAL_MINT_AMOUNT * 10**18);
-        _mintIfNeeded(tETH, INITIAL_MINT_AMOUNT * 10**18);
-        _mintIfNeeded(tCOW, INITIAL_MINT_AMOUNT * 10**18);
+        _mintIfNeeded(tUSDC, INITIAL_MINT_AMOUNT * 10 ** 6); // Check proper decimals
+        _mintIfNeeded(tDAI, INITIAL_MINT_AMOUNT * 10 ** 18);
+        _mintIfNeeded(tLEAN, INITIAL_MINT_AMOUNT * 10 ** 18);
+        _mintIfNeeded(tETH, INITIAL_MINT_AMOUNT * 10 ** 18);
+        _mintIfNeeded(tCOW, INITIAL_MINT_AMOUNT * 10 ** 18);
     }
 
     function requestTokens(address to) external {
