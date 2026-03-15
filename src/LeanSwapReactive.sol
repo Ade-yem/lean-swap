@@ -19,6 +19,8 @@ contract LeanSwapReactive is IReactive, AbstractReactive {
     uint256 orderSettledTopic0;
     uint256 orderDeadlineTopic0;
 
+    address internal hookAddress;
+
     // ── Graph Data Structures ─────────────────────────────────────────────────
     struct SwapOrder {
         uint256 orderId;
@@ -80,18 +82,22 @@ contract LeanSwapReactive is IReactive, AbstractReactive {
         orderSettledTopic0 = _orderSettledTopic0;
         orderDeadlineTopic0 = _orderDeadlineTopic0;
         minOrderAmount = _minOrderAmount;
+        hookAddress = _contract;
+    }
 
+    function initializeSubscription() external {
         if (!vm) {
             service.subscribe(
-                originChainId, _contract, _orderCreatedTopic0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
+                originChainId, hookAddress, orderCreatedTopic0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
             );
             service.subscribe(
-                originChainId, _contract, _orderSettledTopic0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
+                originChainId, hookAddress, orderSettledTopic0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
             );
             service.subscribe(
-                originChainId, _contract, _orderDeadlineTopic0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
+                originChainId, hookAddress, orderDeadlineTopic0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
             );
         }
+
     }
 
     function react(LogRecord calldata log) external vmOnly {

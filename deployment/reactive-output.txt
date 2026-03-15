@@ -1,0 +1,16 @@
+== Logs ==
+  LeanSwapReactive deployed at: 0xC91ce0E92D31Aa7f3ce2EeBB202871e042A8253e
+
+## Setting up 1 EVM.
+
+==========================
+
+Chain 5318007
+
+Estimated gas price: 212 gwei
+
+Estimated total gas used for script: 2567002
+
+Estimated amount required: 0.544204424 ETH
+
+==========================

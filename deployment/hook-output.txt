@@ -1,0 +1,14 @@
+== Logs ==
+  --- Tokens Deployed ---
+  tUSDC: 0x544a6F5B396B59e5c02bd95B59C5F4bc67518A2F
+  tDAI: 0xe0e74a54d7d874eeFda554086e063a26eb808edc
+  tLEAN: 0x2AcAbdDCaDe6Bb8ac38Dd1e908F4Ce515b92572e
+  tETH: 0x7564763F898Ef95b1d2717BA2f0D5dDFaf03CF28
+  tCOW: 0x2cdb4ff044C795D3EE3CDb24E5Fd71D9fAfF91A9
+  Faucet deployed at: 0xC6644741043d24035e3E14955f3AdB0D6Cb98e51
+  LeanSwap Hook deployed at: 0xDEd4eA65Fa4BeD481c0c2Ab041c8030aFC308088
+  Pool initialized for tUSDC / tETH
+  Pool initialized for tETH / tDAI
+  Pool initialized for tUSDC / tDAI
+  Pool initialized for tLEAN / tCOW
+  Pool initialized for tCOW / tUSDC
