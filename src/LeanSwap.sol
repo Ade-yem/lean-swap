@@ -107,10 +107,10 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable, ReentrancyGuard {
     mapping(uint256 orderId => Order order) public orders;
     mapping(uint256 orderId => uint256 index) public orderIndex; // stores (realIndex + 1)
     mapping (address user => uint256[] orderIds) userOrders;
-    constructor(IPoolManager _poolManager, address _reactiveService)
+    constructor(IPoolManager _poolManager, address _reactiveService, address _owner)
         BaseHook(_poolManager)
         AbstractCallback(_reactiveService)
-        Ownable(msg.sender)
+        Ownable(_owner)
     {
         rscAddress = _reactiveService;
     }

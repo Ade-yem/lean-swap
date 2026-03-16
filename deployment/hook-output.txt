@@ -1,14 +1,174 @@
+Compiling 2 files with Solc 0.8.26
+Solc 0.8.26 finished in 24.00s
+Compiler run successful!
+Script ran successfully.
+
 == Logs ==
   --- Tokens Deployed ---
-  tUSDC: 0x544a6F5B396B59e5c02bd95B59C5F4bc67518A2F
-  tDAI: 0xe0e74a54d7d874eeFda554086e063a26eb808edc
-  tLEAN: 0x2AcAbdDCaDe6Bb8ac38Dd1e908F4Ce515b92572e
-  tETH: 0x7564763F898Ef95b1d2717BA2f0D5dDFaf03CF28
-  tCOW: 0x2cdb4ff044C795D3EE3CDb24E5Fd71D9fAfF91A9
-  Faucet deployed at: 0xC6644741043d24035e3E14955f3AdB0D6Cb98e51
-  LeanSwap Hook deployed at: 0xDEd4eA65Fa4BeD481c0c2Ab041c8030aFC308088
-  Pool initialized for tUSDC / tETH
-  Pool initialized for tETH / tDAI
-  Pool initialized for tUSDC / tDAI
+  tUSDC: 0xF131Df4458540193e23826001C3B895b9484aaF1
+  tDAI: 0x20DCA7484818B4A692dcb5f35673660083e7C9d7
+  tLEAN: 0xCf41FA095b3968D42F626F1be8f4df329d3c9BC2
+  tETH: 0x726Eb04Cd41fc7DF6E02D9144D70494E9a0CADb2
+  tCOW: 0xeb6BBc13320a93e173a427Ba30811dA136f0d8Fe
+  Faucet deployed at: 0x6A70CD7490Ab2278110B68a7Ec09244Db5556dE2
+  LeanSwap Hook deployed at: 0xc5Fd61D63a95e16cCD64ED10949F53BF17f28088
+  Pool initialized for tETH / tUSDC
+  Pool initialized for tDAI / tETH
+  Pool initialized for tDAI / tUSDC
   Pool initialized for tLEAN / tCOW
   Pool initialized for tCOW / tUSDC
+
+## Setting up 1 EVM.
+
+==========================
+
+Chain 1301
+
+Estimated gas price: 1 gwei
+
+Estimated total gas used for script: 19074766
+
+Estimated amount required: 0.019074766 ETH
+
+==========================
+
+
+==========================
+
+ONCHAIN EXECUTION COMPLETE & SUCCESSFUL.
+##
+Start verification for (7) contracts
+Start verifying contract `0xF131Df4458540193e23826001C3B895b9484aaF1` deployed on unichain-sepolia
+EVM version: cancun
+Compiler version: 0.8.26
+Optimizations:    44444444
+Constructor args: 000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000009546573742055534443000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000057455534443000000000000000000000000000000000000000000000000000000
+
+Submitting verification for [src/TestnetToken.sol:TestnetToken] 0xF131Df4458540193e23826001C3B895b9484aaF1.
+Submitted contract for verification:
+	Response: `OK`
+	GUID: `f131df4458540193e23826001c3b895b9484aaf169b828fc`
+	URL: https://unichain-sepolia.blockscout.com/address/0xf131df4458540193e23826001c3b895b9484aaf1
+Contract verification status:
+Response: `OK`
+Details: `Pending in queue`
+Contract verification status:
+Response: `OK`
+Details: `Pass - Verified`
+Contract successfully verified
+Start verifying contract `0x20DCA7484818B4A692dcb5f35673660083e7C9d7` deployed on unichain-sepolia
+EVM version: cancun
+Compiler version: 0.8.26
+Optimizations:    44444444
+Constructor args: 000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000008546573742044414900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000047444414900000000000000000000000000000000000000000000000000000000
+
+Submitting verification for [src/TestnetToken.sol:TestnetToken] 0x20DCA7484818B4A692dcb5f35673660083e7C9d7.
+Submitted contract for verification:
+	Response: `OK`
+	GUID: `20dca7484818b4a692dcb5f35673660083e7c9d769b8290f`
+	URL: https://unichain-sepolia.blockscout.com/address/0x20dca7484818b4a692dcb5f35673660083e7c9d7
+Contract verification status:
+Response: `OK`
+Details: `Pending in queue`
+Contract verification status:
+Response: `OK`
+Details: `Pass - Verified`
+Contract successfully verified
+Start verifying contract `0xCf41FA095b3968D42F626F1be8f4df329d3c9BC2` deployed on unichain-sepolia
+EVM version: cancun
+Compiler version: 0.8.26
+Optimizations:    44444444
+Constructor args: 000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000012000000000000000000000000000000000000000000000000000000000000000954657374204c45414e00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005744c45414e000000000000000000000000000000000000000000000000000000
+
+Submitting verification for [src/TestnetToken.sol:TestnetToken] 0xCf41FA095b3968D42F626F1be8f4df329d3c9BC2.
+Submitted contract for verification:
+	Response: `OK`
+	GUID: `cf41fa095b3968d42f626f1be8f4df329d3c9bc269b82922`
+	URL: https://unichain-sepolia.blockscout.com/address/0xcf41fa095b3968d42f626f1be8f4df329d3c9bc2
+Contract verification status:
+Response: `OK`
+Details: `Pending in queue`
+Contract verification status:
+Response: `OK`
+Details: `Pass - Verified`
+Contract successfully verified
+Start verifying contract `0x726Eb04Cd41fc7DF6E02D9144D70494E9a0CADb2` deployed on unichain-sepolia
+EVM version: cancun
+Compiler version: 0.8.26
+Optimizations:    44444444
+Constructor args: 000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000008546573742045544800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000047445544800000000000000000000000000000000000000000000000000000000
+
+Submitting verification for [src/TestnetToken.sol:TestnetToken] 0x726Eb04Cd41fc7DF6E02D9144D70494E9a0CADb2.
+Submitted contract for verification:
+	Response: `OK`
+	GUID: `726eb04cd41fc7df6e02d9144d70494e9a0cadb269b82934`
+	URL: https://unichain-sepolia.blockscout.com/address/0x726eb04cd41fc7df6e02d9144d70494e9a0cadb2
+Contract verification status:
+Response: `OK`
+Details: `Pending in queue`
+Contract verification status:
+Response: `OK`
+Details: `Pass - Verified`
+Contract successfully verified
+Start verifying contract `0xeb6BBc13320a93e173a427Ba30811dA136f0d8Fe` deployed on unichain-sepolia
+EVM version: cancun
+Compiler version: 0.8.26
+Optimizations:    44444444
+Constructor args: 000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000001200000000000000000000000000000000000000000000000000000000000000085465737420434f57000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000474434f5700000000000000000000000000000000000000000000000000000000
+
+Submitting verification for [src/TestnetToken.sol:TestnetToken] 0xeb6BBc13320a93e173a427Ba30811dA136f0d8Fe.
+Submitted contract for verification:
+	Response: `OK`
+	GUID: `eb6bbc13320a93e173a427ba30811da136f0d8fe69b82945`
+	URL: https://unichain-sepolia.blockscout.com/address/0xeb6bbc13320a93e173a427ba30811da136f0d8fe
+Contract verification status:
+Response: `OK`
+Details: `Pending in queue`
+Contract verification status:
+Response: `OK`
+Details: `Pass - Verified`
+Contract successfully verified
+Start verifying contract `0x6A70CD7490Ab2278110B68a7Ec09244Db5556dE2` deployed on unichain-sepolia
+EVM version: cancun
+Compiler version: 0.8.26
+Optimizations:    44444444
+Constructor args: 000000000000000000000000f131df4458540193e23826001c3b895b9484aaf100000000000000000000000020dca7484818b4a692dcb5f35673660083e7c9d7000000000000000000000000cf41fa095b3968d42f626f1be8f4df329d3c9bc2000000000000000000000000726eb04cd41fc7df6e02d9144d70494e9a0cadb2000000000000000000000000eb6bbc13320a93e173a427ba30811da136f0d8fe
+
+Submitting verification for [src/Faucet.sol:Faucet] 0x6A70CD7490Ab2278110B68a7Ec09244Db5556dE2.
+Submitted contract for verification:
+	Response: `OK`
+	GUID: `6a70cd7490ab2278110b68a7ec09244db5556de269b82956`
+	URL: https://unichain-sepolia.blockscout.com/address/0x6a70cd7490ab2278110b68a7ec09244db5556de2
+Contract verification status:
+Response: `OK`
+Details: `Pending in queue`
+Contract verification status:
+Response: `OK`
+Details: `Pass - Verified`
+Contract successfully verified
+Start verifying contract `0xc5Fd61D63a95e16cCD64ED10949F53BF17f28088` deployed on unichain-sepolia
+EVM version: cancun
+Compiler version: 0.8.26
+Optimizations:    44444444
+Constructor args: 00000000000000000000000000b036b58a818b1bc34d502d3fe730db729e62ac0000000000000000000000000000000000000000000000000000000000ffffff000000000000000000000000e265a72c0f8af149492c4d509807b97de5e6b53b
+
+Submitting verification for [src/LeanSwap.sol:LeanSwap] 0xc5Fd61D63a95e16cCD64ED10949F53BF17f28088.
+Submitted contract for verification:
+	Response: `OK`
+	GUID: `c5fd61d63a95e16ccd64ed10949f53bf17f2808869b82967`
+	URL: https://unichain-sepolia.blockscout.com/address/0xc5fd61d63a95e16ccd64ed10949f53bf17f28088
+Contract verification status:
+Response: `OK`
+Details: `Pending in queue`
+Contract verification status:
+Response: `OK`
+Details: `Pending in queue`
+Contract verification status:
+Response: `OK`
+Details: `Pass - Verified`
+Contract successfully verified
+All (7) contracts were verified!
+
+Transactions saved to: /home/adeyemi/uniswap/swap-project/lean-swap/broadcast/deployHookTokensAndFaucet.s.sol/1301/run-latest.json
+
+Sensitive values saved to: /home/adeyemi/uniswap/swap-project/lean-swap/cache/deployHookTokensAndFaucet.s.sol/1301/run-latest.json

@@ -21,7 +21,10 @@ echo "----------------------------------------------------------------"
 
 # Step 1, 4, 5: Deploy Tokens, Faucet, Hook and Initialize Pools on Unichain
 echo "⏳ [1/5] Deploying Hook, Tokens, Faucet, and Pools to Unichain Sepolia..."
-DEPLOY_OUTPUT=$(forge script script/deployHookTokensAndFaucet.s.sol --rpc-url $UNICHAIN_SEPOLIA_RPC_URL --broadcast --slow)
+DEPLOY_OUTPUT=$(forge script script/deployHookTokensAndFaucet.s.sol --rpc-url $UNICHAIN_SEPOLIA_RPC_URL --broadcast \
+        --slow --verify --verifier "blockscout" --verifier-url "https://unichain-sepolia.blockscout.com/api" \
+        --verifier-api-key $UNICHAIN_EXPLORER_API_KEY --with-gas-price 1gwei
+        )
 echo "$DEPLOY_OUTPUT" > ./deployment/hook-output.txt
 echo "$DEPLOY_OUTPUT"
 

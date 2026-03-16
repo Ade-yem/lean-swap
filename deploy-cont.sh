@@ -8,11 +8,13 @@ else
   cat .env.example
   exit 1
 fi
+# Configuration
+REACTIVE_FAUCET="0x9b9BB25f1A81078C544C829c5EB7822d747Cf434"
 
 # Step 2: Deploy Reactive Smart Contract to Reactive Network
 echo "⏳ [2/4] Deploying Reactive Smart Contract to Reactive Network..."
 # Ensure the RSC deployment knows about the Unichain Hook
-export HOOK_ADDRESS="0x5E04fC64D5Ff73BF309973e7556255f96559c088"
+export HOOK_ADDRESS="0xDEd4eA65Fa4BeD481c0c2Ab041c8030aFC308088"
 export ORIGIN_CHAIN_ID=$UNICHAIN_SEPOLIA_CHAIN_ID
 export DEST_CHAIN_ID=$UNICHAIN_SEPOLIA_CHAIN_ID
 

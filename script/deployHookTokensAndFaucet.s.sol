@@ -129,12 +129,12 @@ contract DeployTestnet is Script {
         // Note: For actual react network it expects an address, using reactiveSystemContract if available
         address reactiveSystemContract = address(0x0000000000000000000000000000000000fffFfF);
         uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
-        bytes memory constructorArgs = abi.encode(poolManager, reactiveSystemContract); // Placeholder reactive
+        bytes memory constructorArgs = abi.encode(poolManager, reactiveSystemContract, vm.addr(deployerPrivateKey)); // Pass deployer as owner
 
         (address hookAddress, bytes32 salt) =
             HookMiner.find(create2Deployer, flags, type(LeanSwap).creationCode, constructorArgs);
 
-        LeanSwap leanSwap = new LeanSwap{salt: salt}(IPoolManager(poolManager), reactiveSystemContract);
+        LeanSwap leanSwap = new LeanSwap{salt: salt}(IPoolManager(poolManager), reactiveSystemContract, vm.addr(deployerPrivateKey));
         require(address(leanSwap) == hookAddress, "Hook address mismatch");
         console.log("LeanSwap Hook deployed at:", hookAddress);
 

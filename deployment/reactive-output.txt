@@ -1,5 +1,8 @@
+No files changed, compilation skipped
+Script ran successfully.
+
 == Logs ==
-  LeanSwapReactive deployed at: 0xC91ce0E92D31Aa7f3ce2EeBB202871e042A8253e
+  LeanSwapReactive deployed at: 0xF66626650745711276FA56D6FD21139E74721bDE
 
 ## Setting up 1 EVM.
 
@@ -14,3 +17,12 @@ Estimated total gas used for script: 2567002
 Estimated amount required: 0.544204424 ETH
 
 ==========================
+
+
+==========================
+
+ONCHAIN EXECUTION COMPLETE & SUCCESSFUL.
+
+Transactions saved to: /home/adeyemi/uniswap/swap-project/lean-swap/broadcast/deployReactive.s.sol/5318007/run-latest.json
+
+Sensitive values saved to: /home/adeyemi/uniswap/swap-project/lean-swap/cache/deployReactive.s.sol/5318007/run-latest.json
