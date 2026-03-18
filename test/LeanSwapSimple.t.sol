@@ -41,7 +41,7 @@ contract LeanSwapTest is Test, Deployers {
         );
         hook = LeanSwap(payable(hookAddress));
 
-        router = LeanSwapRouter(manager);
+        router = new LeanSwapRouter(manager);
 
         (key, poolId) = initPool(currency0, currency1, hook, 3000, TickMath.getSqrtPriceAtTick(0));
 
