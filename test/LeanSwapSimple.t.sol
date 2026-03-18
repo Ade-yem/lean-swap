@@ -16,6 +16,8 @@ import {LeanSwap} from "../src/LeanSwap.sol";
 import {SwapParams, ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {LeanSwapLibrary, ReactiveLibrary} from "../src/Library.sol";
+import {LeanSwapRouter} from "../src/LeanSwapRouter.sol";
+
 
 contract LeanSwapTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -23,6 +25,7 @@ contract LeanSwapTest is Test, Deployers {
 
     LeanSwap hook;
     PoolId poolId;
+    LeanSwapRouter router;
 
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
@@ -37,6 +40,8 @@ contract LeanSwapTest is Test, Deployers {
             "LeanSwap.sol", abi.encode(manager, address(0x0000000000000000000000000000000000fffFfF)), hookAddress
         );
         hook = LeanSwap(payable(hookAddress));
+
+        router = LeanSwapRouter(manager);
 
         (key, poolId) = initPool(currency0, currency1, hook, 3000, TickMath.getSqrtPriceAtTick(0));
 

@@ -2,7 +2,7 @@ No files changed, compilation skipped
 Script ran successfully.
 
 == Logs ==
-  LeanSwapReactive deployed at: 0xF66626650745711276FA56D6FD21139E74721bDE
+  LeanSwapReactive deployed at: 0x2DD8A8AfD12a344AE424a371f3C64D0Bb6693799
 
 ## Setting up 1 EVM.
 
@@ -12,9 +12,9 @@ Chain 5318007
 
 Estimated gas price: 212 gwei
 
-Estimated total gas used for script: 2567002
+Estimated total gas used for script: 2566970
 
-Estimated amount required: 0.544204424 ETH
+Estimated amount required: 0.54419764 ETH
 
 ==========================
 

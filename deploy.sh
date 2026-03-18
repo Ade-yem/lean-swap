@@ -12,7 +12,7 @@ fi
 # Configuration
 UNICHAIN_SEPOLIA_CHAIN_ID=${UNICHAIN_SEPOLIA_CHAIN_ID:-1301}
 REACTIVE_TESTNET_CHAIN_ID=${REACTIVE_TESTNET_CHAIN_ID:-5318007}
-ETHEREUM_SEPOLIA_CHAIN_ID=${ETHEREUM_SEPOLIA_CHAIN_ID:-11155111}
+BASE_SEPOLIA_CHAIN_ID=${BASE_SEPOLIA_CHAIN_ID:-11155111}
 REACTIVE_FAUCET="0x9b9BB25f1A81078C544C829c5EB7822d747Cf434"
 
 echo "----------------------------------------------------------------"
@@ -64,8 +64,8 @@ cast send $HOOK_ADDRESS "setRscAddress(address)" $REACTIVE_CONTRACT_ADDR \
 # Step 6: Fund the RSC with REACT tokens via Ethereum Sepolia Faucet
 echo "⏳ [4/5] Funding Reactive Smart Contract via Ethereum Sepolia Faucet..."
 cast send $REACTIVE_FAUCET "request(address)" $REACTIVE_CONTRACT_ADDR \
-    --value 0.2ether \
-    --rpc-url $ETHEREUM_SEPOLIA_RPC \
+    --value 0.1ether \
+    --rpc-url $BASE_SEPOLIA_RPC_URL \
     --private-key $PRIVATE_KEY
 
 echo "⏳ [5/5] Initializing the reactive smart contract subscription"

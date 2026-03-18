@@ -106,7 +106,7 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable, ReentrancyGuard {
     // Indexes of the order so it can be removed (stored as real 0-based index + 1, so 0 means "not present")
     mapping(uint256 orderId => Order order) public orders;
     mapping(uint256 orderId => uint256 index) public orderIndex; // stores (realIndex + 1)
-    mapping (address user => uint256[] orderIds) userOrders;
+    mapping (address user => uint256[] orderIds) public userOrders;
     constructor(IPoolManager _poolManager, address _reactiveService, address _owner)
         BaseHook(_poolManager)
         AbstractCallback(_reactiveService)
@@ -725,5 +725,9 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable, ReentrancyGuard {
         uint256 orderNonce
     ) internal pure returns (uint256 orderId) {
         return uint256(keccak256(abi.encode(_poolId, zeroForOne, deadline, amountIn, amountOut, owner, orderNonce)));
+    }
+
+    function getUserOrders() public view returns (uint256[] memory ids) {
+        ids = userOrders[msg.sender];
     }
 }
