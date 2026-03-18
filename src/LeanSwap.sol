@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: SEE LICENSE IN LICENSE
 pragma solidity 0.8.26;
-import {console} from "forge-std/console.sol";
+
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -198,6 +198,11 @@ contract LeanSwap is BaseHook, AbstractCallback, Ownable, ReentrancyGuard {
         orders[orderId] = order;
         userOrders[owner].push(orderId);
         nonce++;
+    }
+
+    /// Quote swap 
+    function quoteSwap(PoolKey calldata key, SwapParams memory params) external view returns (uint256 tokenIn, uint256 tokenOut) {
+        (tokenIn, tokenOut,) = simulateSwap(key.toId(), params);
     }
 
     /// It swaps the token in one swap order for the second one

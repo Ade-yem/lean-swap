@@ -64,8 +64,13 @@ cast send $HOOK_ADDRESS "setRscAddress(address)" $REACTIVE_CONTRACT_ADDR \
 # Step 6: Fund the RSC with REACT tokens via Ethereum Sepolia Faucet
 echo "⏳ [4/5] Funding Reactive Smart Contract via Ethereum Sepolia Faucet..."
 cast send $REACTIVE_FAUCET "request(address)" $REACTIVE_CONTRACT_ADDR \
-    --value 0.1ether \
+    --value 0.04ether \
     --rpc-url $BASE_SEPOLIA_RPC_URL \
+    --private-key $PRIVATE_KEY
+
+cast send $REACTIVE_FAUCET "request(address)" $REACTIVE_CONTRACT_ADDR \
+    --value 0.04ether \
+    --rpc-url $ETHEREUM_SEPOLIA_RPC_URL \
     --private-key $PRIVATE_KEY
 
 echo "⏳ [5/5] Initializing the reactive smart contract subscription"

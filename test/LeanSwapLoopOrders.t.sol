@@ -51,6 +51,7 @@ import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {LeanSwap} from "../src/LeanSwap.sol";
 import {LeanSwapReactive} from "../src/LeanSwapReactive.sol";
+import {LeanSwapRouter} from "../src/LeanSwapRouter.sol";
 import {SwapParams, ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 import {IReactive} from "reactive-lib/interfaces/IReactive.sol";
 import {LeanSwapLibrary, ReactiveLibrary} from "../src/Library.sol";
@@ -68,7 +69,7 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
     // ── Contracts ─────────────────────────────────────────────────────────────
     LeanSwap hook;
     LeanSwapReactive reactive;
-
+    LeanSwapRouter router;
     // ── Tokens (sorted by address after deployment) ───────────────────────────
     MockERC20 tokenEth;
     MockERC20 tokenDai;
@@ -128,8 +129,9 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         // 3. Deploy hook at the encoded permission address
         uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
         address hookAddress = address(flags);
-        deployCodeTo("LeanSwap.sol", abi.encode(manager, RSC_ADDR), hookAddress);
+        deployCodeTo("LeanSwap.sol", abi.encode(manager, RSC_ADDR, address(this)), hookAddress);
         hook = LeanSwap(payable(hookAddress));
+        router = new LeanSwapRouter(manager);
 
         // 4. Wrap as Currency
         cETH = Currency.wrap(address(tokenEth));
@@ -207,10 +209,10 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
         tokenCow.mint(user, amount);
 
         vm.startPrank(user);
-        tokenEth.approve(address(swapRouter), type(uint256).max);
-        tokenDai.approve(address(swapRouter), type(uint256).max);
-        tokenUsdc.approve(address(swapRouter), type(uint256).max);
-        tokenCow.approve(address(swapRouter), type(uint256).max);
+        tokenEth.approve(address(router), type(uint256).max);
+        tokenDai.approve(address(router), type(uint256).max);
+        tokenUsdc.approve(address(router), type(uint256).max);
+        tokenCow.approve(address(router), type(uint256).max);
         tokenEth.approve(address(hook), type(uint256).max);
         tokenDai.approve(address(hook), type(uint256).max);
         tokenUsdc.approve(address(hook), type(uint256).max);
@@ -231,15 +233,15 @@ contract LeanSwapLoopOrdersTest is Test, Deployers {
     {
         bytes memory hookData = LeanSwapLibrary.encodeHookData(deadline, true, user);
         vm.prank(user);
-        swapRouter.swap(
+        router.swap(
             poolKey_,
             SwapParams({
                 zeroForOne: isZeroForOne,
                 amountSpecified: -int256(amountIn),
                 sqrtPriceLimitX96: isZeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            hookData
+            hookData,
+            amountIn
         );
 
         // Derive orderId from the last order placed on this side of the pool

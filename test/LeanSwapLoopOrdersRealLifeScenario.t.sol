@@ -36,6 +36,7 @@ import {SwapParams, ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol
 import {IReactive} from "reactive-lib/interfaces/IReactive.sol";
 import {LeanSwapLibrary, ReactiveLibrary} from "../src/Library.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {LeanSwapRouter} from "../src/LeanSwapRouter.sol";
 
 contract LeanSwapLoopOrdersRealLifeScenarioWithDifferentPricePointsTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -49,6 +50,7 @@ contract LeanSwapLoopOrdersRealLifeScenarioWithDifferentPricePointsTest is Test,
     // ── Contracts ─────────────────────────────────────────────────────────────
     LeanSwap hook;
     LeanSwapReactive reactive;
+    LeanSwapRouter router;
 
     // ── Tokens (sorted by address after deployment) ───────────────────────────
     MockERC20 tokenEth;
@@ -99,9 +101,9 @@ contract LeanSwapLoopOrdersRealLifeScenarioWithDifferentPricePointsTest is Test,
 
         uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
         address hookAddress = address(flags);
-        deployCodeTo("LeanSwap.sol", abi.encode(manager, RSC_ADDR), hookAddress);
+        deployCodeTo("LeanSwap.sol", abi.encode(manager, RSC_ADDR, address(this)), hookAddress);
         hook = LeanSwap(payable(hookAddress));
-
+        router = new LeanSwapRouter(manager);
         cETH = Currency.wrap(address(tokenEth));
         cDAI = Currency.wrap(address(tokenDai));
         cUSDC = Currency.wrap(address(tokenUsdc));
@@ -186,10 +188,10 @@ contract LeanSwapLoopOrdersRealLifeScenarioWithDifferentPricePointsTest is Test,
         tokenCow.mint(user, amount18);
 
         vm.startPrank(user);
-        tokenEth.approve(address(swapRouter), type(uint256).max);
-        tokenDai.approve(address(swapRouter), type(uint256).max);
-        tokenUsdc.approve(address(swapRouter), type(uint256).max);
-        tokenCow.approve(address(swapRouter), type(uint256).max);
+        tokenEth.approve(address(router), type(uint256).max);
+        tokenDai.approve(address(router), type(uint256).max);
+        tokenUsdc.approve(address(router), type(uint256).max);
+        tokenCow.approve(address(router), type(uint256).max);
         tokenEth.approve(address(hook), type(uint256).max);
         tokenDai.approve(address(hook), type(uint256).max);
         tokenUsdc.approve(address(hook), type(uint256).max);
@@ -207,15 +209,15 @@ contract LeanSwapLoopOrdersRealLifeScenarioWithDifferentPricePointsTest is Test,
     {
         bytes memory hookData = LeanSwapLibrary.encodeHookData(deadline, true, user);
         vm.prank(user);
-        swapRouter.swap(
+        router.swap(
             poolKey_,
             SwapParams({
                 zeroForOne: isZeroForOne,
                 amountSpecified: -int256(amountIn),
                 sqrtPriceLimitX96: isZeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            hookData
+            hookData,
+            amountIn
         );
 
         PoolId pid = poolKey_.toId();

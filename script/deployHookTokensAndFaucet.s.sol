@@ -6,11 +6,12 @@ import {console} from "forge-std/console.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {LeanSwap} from "../src/LeanSwap.sol";
+import {LeanSwapRouter} from "../src/LeanSwapRouter.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {HookMiner} from "lib/v4-hooks-public/src/utils/HookMiner.sol";
 import {TestnetToken} from "../src/TestnetToken.sol";
 import {Faucet} from "../src/Faucet.sol";
-import {CurrencyLibrary, Currency} from "v4-core/types/Currency.sol";
+import {Currency} from "v4-core/types/Currency.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
@@ -125,6 +126,8 @@ contract DeployTestnet is Script {
 
         faucet.initializeMints();
 
+        LeanSwapRouter router = new LeanSwapRouter(manager);
+        console.log("Router deployed at:", address(router));
         // 3. Deploy LeanSwap Hook
         // Note: For actual react network it expects an address, using reactiveSystemContract if available
         address reactiveSystemContract = address(0x0000000000000000000000000000000000fffFfF);
@@ -137,7 +140,6 @@ contract DeployTestnet is Script {
         LeanSwap leanSwap = new LeanSwap{salt: salt}(IPoolManager(poolManager), reactiveSystemContract, vm.addr(deployerPrivateKey));
         require(address(leanSwap) == hookAddress, "Hook address mismatch");
         console.log("LeanSwap Hook deployed at:", hookAddress);
-
         // 4. Initialize Pools
         // Ratios:
         // 1 tETH = 2000 tUSDC => (1e18, 2000e6)

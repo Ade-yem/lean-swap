@@ -16,6 +16,7 @@ import {LeanSwap} from "../src/LeanSwap.sol";
 import {SwapParams, ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 // import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {LeanSwapLibrary, ReactiveLibrary} from "../src/Library.sol";
+import {LeanSwapRouter} from "../src/LeanSwapRouter.sol";
 
 contract LeanSwapTestExtended is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -23,6 +24,7 @@ contract LeanSwapTestExtended is Test, Deployers {
 
     LeanSwap hook;
     PoolId poolId;
+    LeanSwapRouter router;
 
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
@@ -37,9 +39,10 @@ contract LeanSwapTestExtended is Test, Deployers {
         uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
         address hookAddress = address(flags);
         deployCodeTo(
-            "LeanSwap.sol", abi.encode(manager, address(0x0000000000000000000000000000000000fffFfF)), hookAddress
+            "LeanSwap.sol", abi.encode(manager, address(0x0000000000000000000000000000000000fffFfF), address(this)), hookAddress
         );
         hook = LeanSwap(payable(hookAddress));
+        router = new LeanSwapRouter(manager);
 
         (key, poolId) = initPool(currency0, currency1, hook, 3000, TickMath.getSqrtPriceAtTick(0));
 
@@ -61,15 +64,15 @@ contract LeanSwapTestExtended is Test, Deployers {
         MockERC20(Currency.unwrap(currency1)).mint(ade, 1000 ether);
 
         vm.startPrank(alice);
-        MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), type(uint256).max);
-        MockERC20(Currency.unwrap(currency1)).approve(address(swapRouter), type(uint256).max);
+        MockERC20(Currency.unwrap(currency0)).approve(address(router), type(uint256).max);
+        MockERC20(Currency.unwrap(currency1)).approve(address(router), type(uint256).max);
         MockERC20(Currency.unwrap(currency0)).approve(address(hook), type(uint256).max);
         MockERC20(Currency.unwrap(currency1)).approve(address(hook), type(uint256).max);
         vm.stopPrank();
 
         vm.startPrank(bob);
-        MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), type(uint256).max);
-        MockERC20(Currency.unwrap(currency1)).approve(address(swapRouter), type(uint256).max);
+        MockERC20(Currency.unwrap(currency0)).approve(address(router), type(uint256).max);
+        MockERC20(Currency.unwrap(currency1)).approve(address(router), type(uint256).max);
         MockERC20(Currency.unwrap(currency0)).approve(address(hook), type(uint256).max);
         MockERC20(Currency.unwrap(currency1)).approve(address(hook), type(uint256).max);
         vm.stopPrank();
@@ -77,8 +80,8 @@ contract LeanSwapTestExtended is Test, Deployers {
         address[3] memory extras = [john, shade, ade];
         for (uint256 i = 0; i < extras.length; i++) {
             vm.startPrank(extras[i]);
-            MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), type(uint256).max);
-            MockERC20(Currency.unwrap(currency1)).approve(address(swapRouter), type(uint256).max);
+            MockERC20(Currency.unwrap(currency0)).approve(address(router), type(uint256).max);
+            MockERC20(Currency.unwrap(currency1)).approve(address(router), type(uint256).max);
             MockERC20(Currency.unwrap(currency0)).approve(address(hook), type(uint256).max);
             MockERC20(Currency.unwrap(currency1)).approve(address(hook), type(uint256).max);
             vm.stopPrank();
@@ -104,13 +107,14 @@ contract LeanSwapTestExtended is Test, Deployers {
     //     uint256 bal0BeforeHook = currency0.balanceOf(address(hook));
 
     //     // Exact output is a positive amountSpecified
-    //     swapRouter.swap(
+    //     router.swap(
     //         key,
     //         SwapParams({
     //             zeroForOne: true, amountSpecified: int256(amountOut), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
     //         }),
-    //         PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-    //         hookData
+
+    //         hookData,
+    // amountIn
     //     );
     //     vm.stopPrank();
 
@@ -126,37 +130,37 @@ contract LeanSwapTestExtended is Test, Deployers {
 
         // Alice orders
         vm.prank(alice);
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 zeroForOne: true, amountSpecified: -int256(amountIn), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            LeanSwapLibrary.encodeHookData(deadline, true, alice)
+            LeanSwapLibrary.encodeHookData(deadline, true, alice),
+            amountIn
         );
 
         // Bob orders
         vm.prank(bob);
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 zeroForOne: true, amountSpecified: -int256(amountIn), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            LeanSwapLibrary.encodeHookData(deadline, true, bob)
+            LeanSwapLibrary.encodeHookData(deadline, true, bob),
+            amountIn
         );
 
         // John orders (opposite direction)
         vm.prank(john);
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 zeroForOne: false,
                 amountSpecified: -int256(amountIn * 2),
                 sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            LeanSwapLibrary.encodeHookData(deadline, true, john)
+            LeanSwapLibrary.encodeHookData(deadline, true, john),
+            amountIn * 2
         );
 
         // Batch should have 2 ether from true (zeroForOne), and 2 ether from false
@@ -178,25 +182,25 @@ contract LeanSwapTestExtended is Test, Deployers {
         uint256 deadline = block.timestamp + 1 hours;
 
         vm.prank(alice);
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 zeroForOne: true,
                 amountSpecified: -int256(amountInAlice),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            LeanSwapLibrary.encodeHookData(deadline, true, alice)
+            LeanSwapLibrary.encodeHookData(deadline, true, alice),
+            amountInAlice
         );
 
         vm.prank(bob);
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 zeroForOne: false, amountSpecified: -int256(amountInBob), sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            LeanSwapLibrary.encodeHookData(deadline, true, bob)
+            LeanSwapLibrary.encodeHookData(deadline, true, bob),
+            amountInBob
         );
 
         vm.startPrank(address(0x0000000000000000000000000000000000fffFfF));
@@ -216,7 +220,7 @@ contract LeanSwapTestExtended is Test, Deployers {
 
         // First order
         vm.prank(alice);
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 zeroForOne: true,
@@ -225,13 +229,13 @@ contract LeanSwapTestExtended is Test, Deployers {
                 amountSpecified: -int256(amountIn),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            hookData
+            hookData,
+            amountIn
         );
 
         // Second order EXACT same parameters — nonce increments so it gets a unique orderId
         vm.prank(alice);
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 zeroForOne: true,
@@ -240,8 +244,8 @@ contract LeanSwapTestExtended is Test, Deployers {
                 amountSpecified: -int256(amountIn),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            hookData
+            hookData,
+            amountIn
         );
 
         // Check if both orders were batched properly
@@ -260,7 +264,7 @@ contract LeanSwapTestExtended is Test, Deployers {
         // Use a fresh deadline AFTER the warp so Bob's own swap doesn't revert with DeadlineExpired.
         uint256 bobDeadline = block.timestamp + 1 hours;
         vm.prank(bob);
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 zeroForOne: false,
@@ -269,8 +273,8 @@ contract LeanSwapTestExtended is Test, Deployers {
                 amountSpecified: -int256(amountIn * 2),
                 sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            LeanSwapLibrary.encodeHookData(bobDeadline, true, bob)
+            LeanSwapLibrary.encodeHookData(bobDeadline, true, bob),
+            amountIn * 2
         );
 
         vm.startPrank(address(0x0000000000000000000000000000000000fffFfF));

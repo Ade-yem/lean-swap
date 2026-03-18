@@ -37,10 +37,9 @@ contract LeanSwapTest is Test, Deployers {
         uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
         address hookAddress = address(flags);
         deployCodeTo(
-            "LeanSwap.sol", abi.encode(manager, address(0x0000000000000000000000000000000000fffFfF)), hookAddress
+            "LeanSwap.sol", abi.encode(manager, address(0x0000000000000000000000000000000000fffFfF), address(this)), hookAddress
         );
         hook = LeanSwap(payable(hookAddress));
-
         router = new LeanSwapRouter(manager);
 
         (key, poolId) = initPool(currency0, currency1, hook, 3000, TickMath.getSqrtPriceAtTick(0));
@@ -57,15 +56,15 @@ contract LeanSwapTest is Test, Deployers {
         MockERC20(Currency.unwrap(currency1)).mint(bob, 1000 ether);
 
         vm.startPrank(alice);
-        MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), type(uint256).max);
-        MockERC20(Currency.unwrap(currency1)).approve(address(swapRouter), type(uint256).max);
+        MockERC20(Currency.unwrap(currency0)).approve(address(router), type(uint256).max);
+        MockERC20(Currency.unwrap(currency1)).approve(address(router), type(uint256).max);
         MockERC20(Currency.unwrap(currency0)).approve(address(hook), type(uint256).max);
         MockERC20(Currency.unwrap(currency1)).approve(address(hook), type(uint256).max);
         vm.stopPrank();
 
         vm.startPrank(bob);
-        MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), type(uint256).max);
-        MockERC20(Currency.unwrap(currency1)).approve(address(swapRouter), type(uint256).max);
+        MockERC20(Currency.unwrap(currency0)).approve(address(router), type(uint256).max);
+        MockERC20(Currency.unwrap(currency1)).approve(address(router), type(uint256).max);
         MockERC20(Currency.unwrap(currency0)).approve(address(hook), type(uint256).max);
         MockERC20(Currency.unwrap(currency1)).approve(address(hook), type(uint256).max);
         vm.stopPrank();
@@ -79,7 +78,7 @@ contract LeanSwapTest is Test, Deployers {
         uint256 bal0Before = currency0.balanceOf(alice);
         uint256 bal1Before = currency1.balanceOf(alice);
 
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 // casting to 'int256' is safe because [explain why]
@@ -88,8 +87,8 @@ contract LeanSwapTest is Test, Deployers {
                 amountSpecified: -int256(amountIn),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            hookData
+            hookData,
+            amountIn
         );
         vm.stopPrank();
 
@@ -106,7 +105,7 @@ contract LeanSwapTest is Test, Deployers {
         vm.startPrank(alice);
         uint256 bal0BeforeHook = currency0.balanceOf(address(hook));
 
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 // casting to 'int256' is safe because [explain why]
@@ -115,8 +114,8 @@ contract LeanSwapTest is Test, Deployers {
                 amountSpecified: -int256(amountIn),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            hookData
+            hookData,
+            amountIn
         );
         vm.stopPrank();
 
@@ -148,7 +147,7 @@ contract LeanSwapTest is Test, Deployers {
         bytes memory hookData = LeanSwapLibrary.encodeHookData(deadline, true, alice);
 
         vm.startPrank(alice);
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 // casting to 'int256' is safe because [explain why]
@@ -157,8 +156,8 @@ contract LeanSwapTest is Test, Deployers {
                 amountSpecified: -int256(amountIn),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            hookData
+            hookData,
+            amountIn
         );
 
         uint256 orderId = _getOrderId(true);
@@ -182,7 +181,7 @@ contract LeanSwapTest is Test, Deployers {
         bytes memory hookData = LeanSwapLibrary.encodeHookData(deadline, true, alice);
 
         vm.startPrank(alice);
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 // casting to 'int256' is safe because [explain why]
@@ -191,8 +190,8 @@ contract LeanSwapTest is Test, Deployers {
                 amountSpecified: -int256(amountIn),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            hookData
+            hookData,
+            amountIn
         );
         vm.stopPrank();
 
@@ -210,7 +209,7 @@ contract LeanSwapTest is Test, Deployers {
         bytes memory hookData = LeanSwapLibrary.encodeHookData(deadline, true, alice);
 
         vm.startPrank(alice);
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 // casting to 'int256' is safe because [explain why]
@@ -219,8 +218,8 @@ contract LeanSwapTest is Test, Deployers {
                 amountSpecified: -int256(amountIn),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            hookData
+            hookData,
+            amountIn
         );
 
         uint256 orderId = _getOrderId(true);
@@ -237,7 +236,7 @@ contract LeanSwapTest is Test, Deployers {
         bytes memory hookData = LeanSwapLibrary.encodeHookData(deadline, true, alice);
 
         vm.startPrank(alice);
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 // casting to 'int256' is safe because [explain why]
@@ -246,8 +245,8 @@ contract LeanSwapTest is Test, Deployers {
                 amountSpecified: -int256(amountIn),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            hookData
+            hookData,
+            amountIn
         );
         vm.stopPrank();
 
@@ -276,7 +275,7 @@ contract LeanSwapTest is Test, Deployers {
 
         // Alice wants token1 by giving token0
         vm.startPrank(alice);
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 // casting to 'int256' is safe because [explain why]
@@ -285,14 +284,14 @@ contract LeanSwapTest is Test, Deployers {
                 amountSpecified: -int256(amountIn),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            aliceHookData
+            aliceHookData,
+            amountIn
         );
         vm.stopPrank();
 
         // Bob wants token0 by giving token1
         vm.startPrank(bob);
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 // casting to 'int256' is safe because [explain why]
@@ -301,8 +300,8 @@ contract LeanSwapTest is Test, Deployers {
                 amountSpecified: -int256(amountIn),
                 sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            bobHookData
+            bobHookData,
+            amountIn
         );
         vm.stopPrank();
 

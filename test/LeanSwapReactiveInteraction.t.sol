@@ -42,6 +42,7 @@ import {SwapParams, ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IReactive} from "reactive-lib/interfaces/IReactive.sol";
 import {LeanSwapLibrary, ReactiveLibrary} from "../src/Library.sol";
+import {LeanSwapRouter} from "../src/LeanSwapRouter.sol";
 
 // ─── Dummy system-contract stub ────────────────────────────────────────────────
 // LeanSwapReactive constructor calls service.subscribe() unless vm == true.
@@ -63,6 +64,7 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
     // ── Contracts ──────────────────────────────────────────────────────────────
     LeanSwap hook;
     LeanSwapReactive reactive;
+    LeanSwapRouter router;
     PoolId poolId;
 
     // ── Event topics for the reactive contract subscription ───────────────────
@@ -91,9 +93,9 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
         // 2. Deploy LeanSwap hook at the address that encodes the hook permission flags
         uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
         address hookAddress = address(flags);
-        deployCodeTo("LeanSwap.sol", abi.encode(manager, RSC_ADDR), hookAddress);
+        deployCodeTo("LeanSwap.sol", abi.encode(manager, RSC_ADDR, address(this)), hookAddress);
         hook = LeanSwap(payable(hookAddress));
-
+        router = new LeanSwapRouter(manager);
         // 3. Init pool and add liquidity
         (key, poolId) = initPool(currency0, currency1, hook, 3000, TickMath.getSqrtPriceAtTick(0));
         modifyLiquidityRouter.modifyLiquidity(
@@ -130,29 +132,29 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
         MockERC20(Currency.unwrap(currency0)).mint(user, 1_000 ether);
         MockERC20(Currency.unwrap(currency1)).mint(user, 1_000 ether);
         vm.startPrank(user);
-        MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), type(uint256).max);
-        MockERC20(Currency.unwrap(currency1)).approve(address(swapRouter), type(uint256).max);
+        MockERC20(Currency.unwrap(currency0)).approve(address(router), type(uint256).max);
+        MockERC20(Currency.unwrap(currency1)).approve(address(router), type(uint256).max);
         MockERC20(Currency.unwrap(currency0)).approve(address(hook), type(uint256).max);
         MockERC20(Currency.unwrap(currency1)).approve(address(hook), type(uint256).max);
         vm.stopPrank();
     }
 
-    /// @dev Place a CoW order via the swapRouter and return the orderId from the pending array.
+    /// @dev Place a CoW order via the router and return the orderId from the pending array.
     function _placeOrder(address user, bool zeroForOne, uint256 amountIn, uint256 deadline)
         internal
         returns (uint256 orderId)
     {
         bytes memory hookData = LeanSwapLibrary.encodeHookData(deadline, true, user);
         vm.prank(user);
-        swapRouter.swap(
+        router.swap(
             key,
             SwapParams({
                 zeroForOne: zeroForOne,
                 amountSpecified: -int256(amountIn),
                 sqrtPriceLimitX96: zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
             }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            hookData
+            hookData,
+            amountIn
         );
         // Derive orderId from pending array (last element on the side)
         uint256 idx = _pendingCount(zeroForOne) - 1;
@@ -499,8 +501,8 @@ contract LeanSwapReactiveInteractionTest is Test, Deployers {
         MockERC20(Currency.unwrap(currency0)).mint(shadeAddr, 1_000 ether);
         MockERC20(Currency.unwrap(currency1)).mint(shadeAddr, 1_000 ether);
         vm.startPrank(shadeAddr);
-        MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), type(uint256).max);
-        MockERC20(Currency.unwrap(currency1)).approve(address(swapRouter), type(uint256).max);
+        MockERC20(Currency.unwrap(currency0)).approve(address(router), type(uint256).max);
+        MockERC20(Currency.unwrap(currency1)).approve(address(router), type(uint256).max);
         vm.stopPrank();
 
         uint256 amountIn = 1 ether;
