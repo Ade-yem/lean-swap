@@ -9,12 +9,13 @@ import {SwapParams} from "v4-core/types/PoolOperation.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
 import {IPermit2} from "v4-hooks-public/lib/briefcase/src/protocols/permit2/interfaces/IPermit2.sol";
-import {ISignatureTransfer} from "v4-hooks-public/lib/briefcase/src/protocols/permit2/interfaces/ISignatureTransfer.sol";
+import {
+    ISignatureTransfer
+} from "v4-hooks-public/lib/briefcase/src/protocols/permit2/interfaces/ISignatureTransfer.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-
 
 contract LeanSwapRouter {
     using SafeERC20 for IERC20;
@@ -67,68 +68,44 @@ contract LeanSwapRouter {
             // );
             PERMIT2.permitTransferFrom(
                 permit,
-                ISignatureTransfer.SignatureTransferDetails({
-                    to: address(this),
-                    requestedAmount: amountIn
-                }),
+                ISignatureTransfer.SignatureTransferDetails({to: address(this), requestedAmount: amountIn}),
                 msg.sender,
                 signature
             );
         }
 
         // Enter PoolManager execution context
-        POOL_MANAGER.unlock(
-            abi.encode(
-                msg.sender,
-                key,
-                params,
-                hookData,
-                amountIn
-            )
-        );
+        POOL_MANAGER.unlock(abi.encode(msg.sender, key, params, hookData, amountIn));
     }
 
-    /// Quote swap 
-    function quoteSwap(PoolKey calldata key, SwapParams memory params) external view returns (uint256 tokenIn, uint256 tokenOut) {
+    /// Quote swap
+    function quoteSwap(PoolKey calldata key, SwapParams memory params)
+        external
+        view
+        returns (uint256 tokenIn, uint256 tokenOut)
+    {
         (tokenIn, tokenOut) = _simulateSwap(key.toId(), params);
     }
-
-    
 
     /*//////////////////////////////////////////////////////////////
                         UNLOCK CALLBACK (CORE)
     //////////////////////////////////////////////////////////////*/
 
-    function unlockCallback(bytes calldata data)
-        external
-        returns (bytes memory)
-    {
+    function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(POOL_MANAGER)) revert NotPoolManager();
 
-        (
-            address sender,
-            PoolKey memory key,
-            SwapParams memory params,
-            bytes memory hookData,
-            uint256 amountIn
-        ) = abi.decode(data, (address, PoolKey, SwapParams, bytes, uint256));
+        (address sender, PoolKey memory key, SwapParams memory params, bytes memory hookData, uint256 amountIn) =
+            abi.decode(data, (address, PoolKey, SwapParams, bytes, uint256));
 
         // Approve tokens to PoolManager if ERC20
         Currency tokenIn = params.zeroForOne ? key.currency0 : key.currency1;
 
         if (!tokenIn.isAddressZero()) {
-            IERC20(Currency.unwrap(tokenIn)).approve(
-                address(POOL_MANAGER),
-                amountIn
-            );
+            IERC20(Currency.unwrap(tokenIn)).approve(address(POOL_MANAGER), amountIn);
         }
 
         // Execute swap
-        BalanceDelta delta = POOL_MANAGER.swap(
-            key,
-            params,
-            hookData
-        );
+        BalanceDelta delta = POOL_MANAGER.swap(key, params, hookData);
 
         // --- Settlement logic (CRITICAL) ---
 

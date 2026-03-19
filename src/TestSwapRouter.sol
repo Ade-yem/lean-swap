@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-
 import {SwapMath} from "@uniswap/v4-core/src/libraries/SwapMath.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -35,12 +34,9 @@ contract LeanSwapRouter {
                                 SWAP
     //////////////////////////////////////////////////////////////*/
 
-    function swap(
-        PoolKey calldata key,
-        SwapParams calldata params,
-        bytes calldata hookData,
-        uint256 amountIn
-    ) external {
+    function swap(PoolKey calldata key, SwapParams calldata params, bytes calldata hookData, uint256 amountIn)
+        external
+    {
         // Enforce exact input swaps only
         if (params.amountSpecified >= 0) revert ExactInputOnly();
 
@@ -54,27 +50,19 @@ contract LeanSwapRouter {
 
         // Pull tokens from user
         if (!tokenIn.isAddressZero()) {
-            IERC20(Currency.unwrap(tokenIn)).safeTransferFrom(
-                msg.sender,
-                address(this),
-                amountIn
-            );
+            IERC20(Currency.unwrap(tokenIn)).safeTransferFrom(msg.sender, address(this), amountIn);
         }
 
         // Enter PoolManager execution context
-        POOL_MANAGER.unlock(
-            abi.encode(
-                msg.sender,
-                key,
-                params,
-                hookData,
-                amountIn
-            )
-        );
+        POOL_MANAGER.unlock(abi.encode(msg.sender, key, params, hookData, amountIn));
     }
 
-    /// Quote swap 
-    function quoteSwap(PoolKey calldata key, SwapParams memory params) external view returns (uint256 tokenIn, uint256 tokenOut) {
+    /// Quote swap
+    function quoteSwap(PoolKey calldata key, SwapParams memory params)
+        external
+        view
+        returns (uint256 tokenIn, uint256 tokenOut)
+    {
         (tokenIn, tokenOut) = _simulateSwap(key.toId(), params);
     }
 
@@ -82,36 +70,21 @@ contract LeanSwapRouter {
                         UNLOCK CALLBACK (CORE)
     //////////////////////////////////////////////////////////////*/
 
-    function unlockCallback(bytes calldata data)
-        external
-        returns (bytes memory)
-    {
+    function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(POOL_MANAGER)) revert NotPoolManager();
 
-        (
-            address sender,
-            PoolKey memory key,
-            SwapParams memory params,
-            bytes memory hookData,
-            uint256 amountIn
-        ) = abi.decode(data, (address, PoolKey, SwapParams, bytes, uint256));
+        (address sender, PoolKey memory key, SwapParams memory params, bytes memory hookData, uint256 amountIn) =
+            abi.decode(data, (address, PoolKey, SwapParams, bytes, uint256));
 
         // Approve tokens to PoolManager if ERC20
         Currency tokenIn = params.zeroForOne ? key.currency0 : key.currency1;
 
         if (!tokenIn.isAddressZero()) {
-            IERC20(Currency.unwrap(tokenIn)).approve(
-                address(POOL_MANAGER),
-                amountIn
-            );
+            IERC20(Currency.unwrap(tokenIn)).approve(address(POOL_MANAGER), amountIn);
         }
 
         // Execute swap
-        BalanceDelta delta = POOL_MANAGER.swap(
-            key,
-            params,
-            hookData
-        );
+        BalanceDelta delta = POOL_MANAGER.swap(key, params, hookData);
 
         // --- Settlement logic (CRITICAL) ---
 

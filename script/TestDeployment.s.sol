@@ -110,7 +110,7 @@ contract TestPool is Script {
             sqrtPriceLimitX96: zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
         });
 
-        leanSwapRouter.swap(key, params, LeanSwapLibrary.encodeHookData(0, false, address(0)), amountIn);
+        leanSwapRouter.swap(key, params, LeanSwapLibrary.encodeHookData(block.timestamp + 1000, true, owner), amountIn);
 
         uint256 finTABal = tokenIn.balanceOf(owner);
         uint256 finTBBal = tokenOut.balanceOf(owner);
