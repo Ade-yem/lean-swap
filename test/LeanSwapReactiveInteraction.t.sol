@@ -42,7 +42,7 @@ import {SwapParams, ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IReactive} from "reactive-lib/interfaces/IReactive.sol";
 import {LeanSwapLibrary, ReactiveLibrary} from "../src/Library.sol";
-import {LeanSwapRouter} from "../src/LeanSwapRouter.sol";
+import {LeanSwapRouter} from "../src/TestSwapRouter.sol";
 
 // ─── Dummy system-contract stub ────────────────────────────────────────────────
 // LeanSwapReactive constructor calls service.subscribe() unless vm == true.

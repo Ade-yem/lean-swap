@@ -15,6 +15,8 @@ import {Currency} from "v4-core/types/Currency.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
+import {IPermit2} from "v4-hooks-public/lib/briefcase/src/protocols/permit2/interfaces/IPermit2.sol";
+import {TickMath} from "v4-core/libraries/TickMath.sol";
 
 interface IPoolModifyLiquidityTest {
     function modifyLiquidity(PoolKey memory key, ModifyLiquidityParams memory params, bytes memory hookData)
@@ -25,10 +27,25 @@ interface IPoolModifyLiquidityTest {
 
 contract DeployTestnet is Script {
     IPoolManager manager;
+    IPermit2 permit2;
     IPoolModifyLiquidityTest modifyLiquidityRouter;
 
-    function encodePriceSqrt(uint256 reserve1, uint256 reserve0) internal pure returns (uint160) {
-        return uint160(sqrt((reserve1 << 192) / reserve0));
+    function encodePriceSqrt(uint256 amount1, uint256 amount0) internal pure returns (uint160 sqrtPriceX96) {
+        require(amount0 > 0 && amount1 > 0, "amounts must be > 0");
+
+        // Compute ratio in Q96 fixed point: (amount1 << 96) / amount0
+        uint256 ratioX96 = (amount1 << 96) / amount0;
+
+        // Integer square root of ratioX96, then shift left 48 to reach Q96
+        sqrtPriceX96 = uint160(sqrt(ratioX96) << 48);
+
+        // Clamp to Uniswap V4 valid range
+        if (sqrtPriceX96 <= TickMath.MIN_SQRT_PRICE) {
+            sqrtPriceX96 = TickMath.MIN_SQRT_PRICE + 1;
+        }
+        if (sqrtPriceX96 >= TickMath.MAX_SQRT_PRICE) {
+            sqrtPriceX96 = TickMath.MAX_SQRT_PRICE - 1;
+        }
     }
 
     function sqrt(uint256 y) internal pure returns (uint256 z) {
@@ -94,9 +111,11 @@ contract DeployTestnet is Script {
         address poolManager = address(0x00B036B58a818B1BC34d502D3fE730Db729e62AC);
         address poolModifyLiquidityTest = address(0x5fa728C0A5cfd51BEe4B060773f50554c0C8A7AB);
         address create2Deployer = address(0x4e59b44847b379578588920cA78FbF26c0B4956C);
+        address permit2Address = address(0x000000000022D473030F116dDEE9F6B43aC78BA3);
 
         manager = IPoolManager(poolManager);
         modifyLiquidityRouter = IPoolModifyLiquidityTest(poolModifyLiquidityTest);
+        permit2 = IPermit2(permit2Address);
 
         vm.startBroadcast(deployerPrivateKey);
 
@@ -126,7 +145,7 @@ contract DeployTestnet is Script {
 
         faucet.initializeMints();
 
-        LeanSwapRouter router = new LeanSwapRouter(manager);
+        LeanSwapRouter router = new LeanSwapRouter(manager, permit2);
         console.log("Router deployed at:", address(router));
         // 3. Deploy LeanSwap Hook
         // Note: For actual react network it expects an address, using reactiveSystemContract if available

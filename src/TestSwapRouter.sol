@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+
 import {SwapMath} from "@uniswap/v4-core/src/libraries/SwapMath.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -8,13 +9,10 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {SwapParams} from "v4-core/types/PoolOperation.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
-import {IPermit2} from "v4-hooks-public/lib/briefcase/src/protocols/permit2/interfaces/IPermit2.sol";
-import {ISignatureTransfer} from "v4-hooks-public/lib/briefcase/src/protocols/permit2/interfaces/ISignatureTransfer.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-
 
 contract LeanSwapRouter {
     using SafeERC20 for IERC20;
@@ -24,15 +22,13 @@ contract LeanSwapRouter {
     using SafeCast for int256;
 
     IPoolManager public immutable POOL_MANAGER;
-    IPermit2 public immutable PERMIT2;
 
     error NotPoolManager();
     error ExactInputOnly();
     error AmountMismatch();
 
-    constructor(IPoolManager _poolManager, IPermit2 _permit2) {
+    constructor(IPoolManager _poolManager) {
         POOL_MANAGER = _poolManager;
-        PERMIT2 = _permit2;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -43,9 +39,7 @@ contract LeanSwapRouter {
         PoolKey calldata key,
         SwapParams calldata params,
         bytes calldata hookData,
-        uint256 amountIn,
-        ISignatureTransfer.PermitTransferFrom calldata permit,
-        bytes calldata signature
+        uint256 amountIn
     ) external {
         // Enforce exact input swaps only
         if (params.amountSpecified >= 0) revert ExactInputOnly();
@@ -60,19 +54,10 @@ contract LeanSwapRouter {
 
         // Pull tokens from user
         if (!tokenIn.isAddressZero()) {
-            // IERC20(Currency.unwrap(tokenIn)).safeTransferFrom(
-            //     msg.sender,
-            //     address(this),
-            //     amountIn
-            // );
-            PERMIT2.permitTransferFrom(
-                permit,
-                ISignatureTransfer.SignatureTransferDetails({
-                    to: address(this),
-                    requestedAmount: amountIn
-                }),
+            IERC20(Currency.unwrap(tokenIn)).safeTransferFrom(
                 msg.sender,
-                signature
+                address(this),
+                amountIn
             );
         }
 
@@ -92,8 +77,6 @@ contract LeanSwapRouter {
     function quoteSwap(PoolKey calldata key, SwapParams memory params) external view returns (uint256 tokenIn, uint256 tokenOut) {
         (tokenIn, tokenOut) = _simulateSwap(key.toId(), params);
     }
-
-    
 
     /*//////////////////////////////////////////////////////////////
                         UNLOCK CALLBACK (CORE)

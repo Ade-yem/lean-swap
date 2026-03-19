@@ -51,7 +51,7 @@ import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {LeanSwap} from "../src/LeanSwap.sol";
 import {LeanSwapReactive} from "../src/LeanSwapReactive.sol";
-import {LeanSwapRouter} from "../src/LeanSwapRouter.sol";
+import {LeanSwapRouter} from "../src/TestSwapRouter.sol";
 import {SwapParams, ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 import {IReactive} from "reactive-lib/interfaces/IReactive.sol";
 import {LeanSwapLibrary, ReactiveLibrary} from "../src/Library.sol";

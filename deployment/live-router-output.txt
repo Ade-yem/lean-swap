@@ -1,0 +1,49 @@
+No files changed, compilation skipped
+Script ran successfully.
+
+== Logs ==
+  Router deployed at: 0x305D52a7EB149f153fa7268061656B17f8b008af
+
+## Setting up 1 EVM.
+
+==========================
+
+Chain 1301
+
+Estimated gas price: 1 gwei
+
+Estimated total gas used for script: 2381880
+
+Estimated amount required: 0.00238188 ETH
+
+==========================
+
+
+==========================
+
+ONCHAIN EXECUTION COMPLETE & SUCCESSFUL.
+##
+Start verification for (1) contracts
+Start verifying contract `0x305D52a7EB149f153fa7268061656B17f8b008af` deployed on unichain-sepolia
+EVM version: cancun
+Compiler version: 0.8.26
+Optimizations:    44444444
+Constructor args: 00000000000000000000000000b036b58a818b1bc34d502d3fe730db729e62ac000000000000000000000000000000000022d473030f116ddee9f6b43ac78ba3
+
+Submitting verification for [src/LeanSwapRouter.sol:LeanSwapRouter] 0x305D52a7EB149f153fa7268061656B17f8b008af.
+Submitted contract for verification:
+	Response: `OK`
+	GUID: `305d52a7eb149f153fa7268061656b17f8b008af69bbf1b5`
+	URL: https://unichain-sepolia.blockscout.com/address/0x305d52a7eb149f153fa7268061656b17f8b008af
+Contract verification status:
+Response: `OK`
+Details: `Pending in queue`
+Contract verification status:
+Response: `OK`
+Details: `Pass - Verified`
+Contract successfully verified
+All (1) contracts were verified!
+
+Transactions saved to: /home/adeyemi/uniswap/swap-project/lean-swap/broadcast/deployRouter.s.sol/1301/run-latest.json
+
+Sensitive values saved to: /home/adeyemi/uniswap/swap-project/lean-swap/cache/deployRouter.s.sol/1301/run-latest.json

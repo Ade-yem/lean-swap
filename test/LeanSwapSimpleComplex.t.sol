@@ -16,7 +16,7 @@ import {LeanSwap} from "../src/LeanSwap.sol";
 import {SwapParams, ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 // import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {LeanSwapLibrary, ReactiveLibrary} from "../src/Library.sol";
-import {LeanSwapRouter} from "../src/LeanSwapRouter.sol";
+import {LeanSwapRouter} from "../src/TestSwapRouter.sol";
 
 contract LeanSwapTestExtended is Test, Deployers {
     using PoolIdLibrary for PoolKey;
